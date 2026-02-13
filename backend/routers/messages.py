@@ -412,7 +412,8 @@ _SAVE_NOTE_PATTERN = re.compile(
     re.DOTALL,
 )
 
-# Regex to match [SEND_EMAIL: subject]body[/SEND_EMAIL] blocks in LLM output
+# Regex to match [SEND_EMAIL: subject | recipient@email.com]body[/SEND_EMAIL] blocks.
+# The '| recipient' part is optional; if omitted, sends to the user's configured email.
 _SEND_EMAIL_PATTERN = re.compile(
     r"\[SEND_EMAIL:\s*(.+?)\]\s*\n(.*?)\n?\[/SEND_EMAIL\]",
     re.DOTALL,
@@ -844,11 +845,26 @@ async def extract_and_send_emails(
                 can_send = False
 
         for match in send_matches:
-            subject = match.group(1).strip()
+            raw_subject = match.group(1).strip()
             body = match.group(2).strip()
 
-            if not subject or not body:
+            if not raw_subject or not body:
                 continue
+
+            # Parse optional recipient: "Subject | recipient@email.com"
+            override_recipient = None
+            if "|" in raw_subject:
+                parts = raw_subject.rsplit("|", 1)
+                subject = parts[0].strip()
+                candidate = parts[1].strip()
+                # Validate it looks like an email address
+                if "@" in candidate and "." in candidate:
+                    override_recipient = candidate
+                else:
+                    # Not an email, treat the whole thing as the subject
+                    subject = raw_subject
+            else:
+                subject = raw_subject
 
             # Always log to notifications collection
             notif_doc = {
@@ -873,8 +889,9 @@ async def extract_and_send_emails(
                         body=f"<p>{'</p><p>'.join(body.split(chr(10) + chr(10)))}</p>",
                     )
 
+                    actual_recipient = override_recipient or recipient
                     success = await service.send(
-                        to=recipient,
+                        to=actual_recipient,
                         subject=f"Engram — {subject}",
                         body=body,
                         html_body=html_body,
@@ -883,7 +900,8 @@ async def extract_and_send_emails(
                     if success:
                         notif_doc["status"] = "sent"
                         notif_doc["sentAt"] = datetime.utcnow()
-                        logger.info(f"Engram sent email: '{subject}' to {recipient}")
+                        notif_doc["recipient"] = actual_recipient
+                        logger.info(f"Engram sent email: '{subject}' to {actual_recipient}")
                     else:
                         notif_doc["status"] = "failed"
                         notif_doc["error"] = "SMTP send failed"

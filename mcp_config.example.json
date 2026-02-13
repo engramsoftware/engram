@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "chatapp-coding-enhancer": {
+      "command": "docker",
+      "args": ["exec", "-i", "engram", "python", "mcp_server.py"]
+    }
+  }
+}

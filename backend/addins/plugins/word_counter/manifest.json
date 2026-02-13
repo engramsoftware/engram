@@ -1,0 +1,18 @@
+{
+  "id": "word_counter",
+  "name": "Word Counter",
+  "version": "1.0.0",
+  "description": "Analyze text for word count, character count, reading time, sentence count, and average word length. The AI can use this automatically.",
+  "author": "System",
+  "type": "tool",
+  "entrypoint": {
+    "backend": "backend.py"
+  },
+  "permissions": [],
+  "config": {
+    "words_per_minute": 200
+  },
+  "hooks": {
+    "tools": ["analyze_text"]
+  }
+}

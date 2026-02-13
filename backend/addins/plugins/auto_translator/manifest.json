@@ -1,0 +1,21 @@
+{
+  "id": "auto_translator",
+  "name": "Auto Translator",
+  "version": "1.0.0",
+  "description": "Automatically translate messages to/from English",
+  "author": "System",
+  "type": "interceptor",
+  "entrypoint": {
+    "backend": "backend.py"
+  },
+  "permissions": ["network", "llm.messages"],
+  "config": {
+    "source_language": "auto",
+    "target_language": "en",
+    "translate_user_input": true,
+    "translate_ai_output": false
+  },
+  "hooks": {
+    "interceptors": ["before_llm", "after_llm"]
+  }
+}

@@ -1,0 +1,118 @@
+# ===========================================
+# Python
+# ===========================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# Embedded Python (legacy Windows launcher)
+python/
+
+# Windows launcher files (legacy, replaced by Docker)
+start.bat
+setup_launcher.py
+tray_launcher.py
+uninstall.bat
+build_frontend.py
+atlas_installer.iss
+installer/
+
+# Distribution / packaging
+*.egg-info/
+dist/
+build/
+
+# ===========================================
+# Node.js / Frontend
+# ===========================================
+
+# Dependencies
+node_modules/
+
+# Build output (Docker builds frontend at image build time)
+frontend/dist/
+frontend/build/
+backend/static/
+
+# Vite
+*.local
+
+# ===========================================
+# Environment & Secrets
+# ===========================================
+
+# Environment files (contain secrets)
+.env
+backend/.env
+
+# Keep the example
+!.env.example
+!backend/.env.example
+
+# ===========================================
+# IDE / Editor
+# ===========================================
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# JetBrains
+.idea/
+
+# Windsurf rules/workflows/notes (private dev config)
+.windsurf/
+
+# ===========================================
+# OS Files
+# ===========================================
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ============================================================
+# Data & Logs (ALL user data under data/ — never commit)
+# ============================================================
+data/
+
+# Log files
+*.log
+logs/
+
+# ===========================================
+# Testing & Coverage
+# ===========================================
+
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+
+# ===========================================
+# Misc
+# ===========================================
+
+# Temporary files
+*.tmp
+*.temp
+*.swp
+*~
+
+# Compiled files
+*.so
+*.dll
+

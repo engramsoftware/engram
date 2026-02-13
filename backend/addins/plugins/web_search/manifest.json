@@ -1,0 +1,20 @@
+{
+  "id": "web_search",
+  "name": "Web Search",
+  "version": "1.0.0",
+  "description": "Search the web using Tavily or SerpAPI",
+  "author": "System",
+  "type": "tool",
+  "entrypoint": {
+    "backend": "backend.py"
+  },
+  "permissions": ["network"],
+  "config": {
+    "provider": "tavily",
+    "api_key": "",
+    "max_results": 5
+  },
+  "hooks": {
+    "tools": ["web_search"]
+  }
+}

@@ -1,0 +1,40 @@
+# ============================================================
+# Engram — Docker Compose
+# Single command: docker compose up
+# ============================================================
+
+services:
+  engram:
+    build: .
+    container_name: engram
+    ports:
+      - "8000:8000"
+    volumes:
+      # Persistent data: bind-mount local data folder so existing data is reused
+      # Delete this folder to reset everything
+      - ./data:/data
+      # ML model cache: persists ChromaDB ONNX + cross-encoder models across restarts
+      # Prevents 60-80s cold-start on first message after rebuild
+      - model-cache:/root/.cache
+      # Optional: mount a local .env file for configuration
+      # Uncomment and create backend/.env with your settings
+      # - ./backend/.env:/app/.env:ro
+    environment:
+      # Generate unique secrets on first run (override in .env or here)
+      - HOST=0.0.0.0
+      - PORT=8000
+      - DEBUG=false
+      - LMSTUDIO_BASE_URL=http://host.docker.internal:1234
+      - OLLAMA_BASE_URL=http://host.docker.internal:11434
+      # Uncomment and set your API keys here or in a .env file:
+      # - JWT_SECRET_KEY=change-me
+      # - ENCRYPTION_KEY=change-me
+      # - OPENAI_API_KEY=sk-...
+      # - ANTHROPIC_API_KEY=sk-ant-...
+      # - BRAVE_SEARCH_API_KEY=BSA...
+      # - NEO4J_URI=neo4j+s://xxx.databases.neo4j.io
+      # - NEO4J_PASSWORD=your-password
+    restart: unless-stopped
+
+volumes:
+  model-cache:

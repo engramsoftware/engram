@@ -1,0 +1,24 @@
+{
+  "id": "pomodoro",
+  "name": "Pomodoro Timer",
+  "version": "1.0.0",
+  "description": "Focus timer with 25/5 work-break cycles. Tracks completed sessions and helps you stay productive.",
+  "author": "System",
+  "type": "gui",
+  "entrypoint": {
+    "backend": "backend.py",
+    "frontend": "PomodoroTimer"
+  },
+  "permissions": ["storage"],
+  "config": {
+    "work_minutes": 25,
+    "break_minutes": 5,
+    "long_break_minutes": 15,
+    "sessions_before_long_break": 4
+  },
+  "ui": {
+    "mountPoints": ["sidebar"],
+    "icon": "timer",
+    "label": "Pomodoro"
+  }
+}

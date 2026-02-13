@@ -1,0 +1,22 @@
+{
+  "id": "image_generator",
+  "name": "Image Generator",
+  "version": "1.0.0",
+  "description": "Generate images using DALL-E",
+  "author": "System",
+  "type": "gui",
+  "entrypoint": {
+    "backend": "backend.py",
+    "frontend": "ImageGenerator.tsx"
+  },
+  "permissions": ["network", "storage"],
+  "config": {
+    "model": "dall-e-3",
+    "size": "1024x1024",
+    "quality": "standard"
+  },
+  "ui": {
+    "mountPoints": ["toolbar", "sidebar"],
+    "icon": "image"
+  }
+}

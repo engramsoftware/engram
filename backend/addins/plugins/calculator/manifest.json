@@ -1,0 +1,18 @@
+{
+  "id": "calculator",
+  "name": "Calculator",
+  "version": "1.0.0",
+  "description": "Safe mathematical expression evaluation",
+  "author": "System",
+  "type": "tool",
+  "entrypoint": {
+    "backend": "backend.py"
+  },
+  "permissions": [],
+  "config": {
+    "precision": 10
+  },
+  "hooks": {
+    "tools": ["calculate"]
+  }
+}

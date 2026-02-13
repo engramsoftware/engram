@@ -1,0 +1,35 @@
+# Git
+.git
+.gitignore
+
+# IDE / editor
+.windsurf
+.vscode
+.idea
+__pycache__
+
+# Windows launcher stuff (not needed in Docker)
+python/
+installer/
+start.bat
+setup_launcher.py
+tray_launcher.py
+uninstall.bat
+build_frontend.py
+atlas_installer.iss
+*.lnk
+
+# Data (mounted as volume, not baked into image)
+data/
+
+# Frontend node_modules (npm ci runs in Docker)
+frontend/node_modules
+
+# Screenshots (docs only)
+screenshots/
+Screenshots folder/
+
+# Misc
+*.zip
+*.exe
+*.msi

@@ -1,0 +1,19 @@
+{
+  "id": "mood_journal",
+  "name": "Mood Journal",
+  "version": "1.0.0",
+  "description": "Quick mood and energy logging with emoji picker. Track how you feel over time and spot patterns.",
+  "author": "System",
+  "type": "gui",
+  "entrypoint": {
+    "backend": "backend.py",
+    "frontend": "MoodJournal"
+  },
+  "permissions": ["storage"],
+  "config": {},
+  "ui": {
+    "mountPoints": ["sidebar"],
+    "icon": "smile",
+    "label": "Mood"
+  }
+}

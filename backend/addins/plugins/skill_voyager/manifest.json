@@ -1,0 +1,22 @@
+{
+  "id": "skill_voyager",
+  "name": "Skill Voyager",
+  "version": "1.0.0",
+  "description": "Voyager-style autonomous skill learning. Observes conversations, builds a skill library of verified strategies, composes simple skills into complex ones, and uses local LLM for self-evaluation.",
+  "type": "hybrid",
+  "entrypoint": {
+    "backend": "backend.py"
+  },
+  "permissions": ["read_messages", "write_context", "local_llm"],
+  "config": {
+    "settings": {
+      "icon": "sparkles",
+      "auto_learn": true,
+      "curriculum_enabled": true,
+      "eval_model": "local",
+      "min_confidence_to_apply": 0.45,
+      "max_skills": 200,
+      "eval_after_every_n": 1
+    }
+  }
+}

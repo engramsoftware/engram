@@ -1,0 +1,16 @@
+{
+  "id": "code_improver",
+  "name": "Code Improver",
+  "version": "1.0.0",
+  "description": "Enhances coding queries with intelligent context retrieval and knowledge graph integration",
+  "author": "System",
+  "type": "interceptor",
+  "entrypoint": {
+    "backend": "backend.py"
+  },
+  "permissions": ["memory", "graph", "search"],
+  "config": {},
+  "hooks": {
+    "interceptors": ["before_llm", "after_llm"]
+  }
+}

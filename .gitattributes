@@ -1,0 +1,2 @@
+# Ensure shell scripts use LF (fixes "no such file or directory" in Docker on Windows)
+*.sh text eol=lf

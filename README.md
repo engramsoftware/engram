@@ -70,6 +70,10 @@ docker compose down -v   # stop and delete all data
 
 Or keep your data and just remove the container: `docker compose down` (data persists in the Docker volume).
 
+### Troubleshooting
+
+**Windows:** Engram works on Windows. If you see `exec /app/docker-entrypoint.sh: no such file or directory`, ensure you have the latest code (`git pull`). The repo includes a fix for Windows line endings; the Dockerfile normalizes scripts during build.
+
 ---
 
 ## What Gets Installed

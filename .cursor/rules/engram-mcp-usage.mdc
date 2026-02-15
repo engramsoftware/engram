@@ -1,0 +1,30 @@
+---
+description: When and how to use Engram MCP tools — get_smart_context, find_skill, record_outcome
+alwaysApply: true
+---
+
+# Engram MCP usage (this project)
+
+This project has the **Engram** MCP server (37 tools). Use it so the system learns and future sessions get playbooks/skills.
+
+## Starting a task
+- **First:** Call `get_smart_context` with `task_description` set to what you’re doing.
+- If a playbook is returned, follow its steps; do not skip or improvise.
+- If no playbook: optionally `search_all_context` for related solutions.
+- For multi-step work: `create_session` to track progress.
+
+## When the user has an error or bug
+- **First:** Call `find_skill` with `query` = the error message or problem description.
+- If a skill/solution is returned, apply it and then `record_skill_outcome` (with the skill_id and whether it worked).
+- If nothing found: fix the issue, then `record_outcome` so a skill/playbook can be generated later.
+
+## After solving something
+- Call `record_outcome` with `task_description`, `solution_applied`, and `outcome` (`success` / `partial_success` / `failure`). This drives auto-learning and playbook generation.
+- For reusable patterns: consider `create_playbook` with steps, code templates, and guardrails so weaker models can follow it next time.
+- Optionally `store_ai_reasoning` to save how you approached the problem.
+
+## Other useful tools
+- **Web research:** After any web search, call `store_web_research` with topic, URLs, and findings.
+- **Full tool list:** Use `list_tools_compact` (saves tokens) or re-read this rule; full guide: `get_mcp_guide`.
+
+Do not ignore these tools; using them improves future answers and playbooks for this project.

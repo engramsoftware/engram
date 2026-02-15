@@ -22,3 +22,6 @@ Local-first AI chat with memory, knowledge graph, RAG, web search, addins. Same 
 
 ## DB access
 - `from database import get_database` then `db = get_database()`; use `db.users`, `db.llm_settings`, etc. (async methods: `find_one`, `insert_one`, `update_one`).
+
+## Engram MCP
+- This project has the Engram MCP server (see `.cursor/mcp.json`). **Follow the rule** `.cursor/rules/engram-mcp-usage.mdc`: call `get_smart_context` when starting tasks, `find_skill` for errors, `record_outcome` after solving.

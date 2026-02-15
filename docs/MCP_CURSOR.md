@@ -35,6 +35,16 @@ If `.cursor/mcp.json` exists in this repo, Cursor should load the **engram** ser
 4. **New chat:** After connecting, start a **new** Composer/Agent chat so it gets the updated tool list.
 5. **Global fallback:** If project-level config isn’t loaded (known in some Cursor versions), add the same server in the **global** MCP config (e.g. via the same Settings screen; it may write to `%APPDATA%\Cursor\` or similar).
 
+## Getting the agent to use the MCP
+
+The rule **`.cursor/rules/engram-mcp-usage.mdc`** tells the AI to:
+
+- Call **`get_smart_context`** when starting a task (to load playbooks/skills).
+- Call **`find_skill`** when the user has an error (to reuse past solutions).
+- Call **`record_outcome`** after fixing or completing something (so the system learns).
+
+Keep that rule enabled (it has `alwaysApply: true`). In a new chat, the agent will see the rule and use the tools.
+
 ## Verify server in container
 
 ```powershell

@@ -45,6 +45,8 @@ The rule **`.cursor/rules/engram-mcp-usage.mdc`** tells the AI to:
 
 Keep that rule enabled (it has `alwaysApply: true`). In a new chat, the agent will see the rule and use the tools.
 
+**Pin the Engram MCP server version** (e.g. Docker image tag or git commit) so tool behavior does not change unexpectedly between runs.
+
 ## Verify server in container
 
 ```powershell

@@ -5,7 +5,10 @@ alwaysApply: true
 
 # Engram MCP usage (this project)
 
-This project has the **Engram** MCP server (37 tools). Use it so the system learns and future sessions get playbooks/skills.
+This project has the **Engram** MCP server (39 tools). Use it so the system learns and future sessions get playbooks/skills.
+
+## One-call workflows
+- **Fix error:** `run_workflow` with `workflow: "fix_error"` and `error_message`. **Start task:** `run_workflow` with `workflow: "start_task"` and `task_description`. Or `get_workflow_prompt` for instruction text.
 
 ## Starting a task
 - **First:** Call `get_smart_context` with `task_description` set to what you’re doing.
@@ -14,7 +17,7 @@ This project has the **Engram** MCP server (37 tools). Use it so the system lear
 - For multi-step work: `create_session` to track progress.
 
 ## When the user has an error or bug
-- **First:** Call `find_skill` with `query` = the error message or problem description.
+- **First:** Call `run_workflow` with `workflow: "fix_error"` and `error_message`, or call `find_skill` with `query` = the error message or problem description.
 - If a skill/solution is returned, apply it and then `record_skill_outcome` (with the skill_id and whether it worked).
 - If nothing found: fix the issue, then `record_outcome` so a skill/playbook can be generated later.
 

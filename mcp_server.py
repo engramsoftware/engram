@@ -81,8 +81,36 @@ sys.path.insert(0, backend_path)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Audit log for tool calls (optional; set MCP_AUDIT_LOG=0 to disable)
+def _audit_log_tool(name: str, user_id: str, outcome: str) -> None:
+    if os.environ.get("MCP_AUDIT_LOG", "1") == "0":
+        return
+    try:
+        log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, "mcp_audit.log")
+        line = json.dumps({"ts": __import__("time").time(), "tool": name, "user_id": user_id, "outcome": outcome}) + "\n"
+        with open(log_path, "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception as e:
+        logger.debug(f"Audit log write failed: {e}")
+
 # Initialize MCP server
 server = Server("chatapp-coding-enhancer")
+
+# TTL cache for read-heavy tools (get_db_stats: 60s, get_smart_context: 30s)
+_mcp_cache: Dict[str, tuple] = {}  # key -> (expiry_ts, value)
+def _cache_get(key: str, ttl_sec: float) -> Optional[Any]:
+    import time
+    if key in _mcp_cache:
+        expiry, val = _mcp_cache[key]
+        if time.time() < expiry:
+            return val
+        del _mcp_cache[key]
+    return None
+def _cache_set(key: str, value: Any, ttl_sec: float) -> None:
+    import time
+    _mcp_cache[key] = (time.time() + ttl_sec, value)
 
 # Lazy-loaded components
 _code_extractor = None
@@ -184,7 +212,7 @@ async def list_tools() -> List[Tool]:
         # IMPORTANT: This should be the FIRST tool - helps models understand how to use this MCP
         Tool(
             name="get_mcp_guide",
-            description="START HERE! Get a guide on how to use this MCP server effectively. Shows recommended workflows, which tools work without external dependencies, and common use cases. Call this first if you're unsure how to use the Engram coding enhancer.",
+            description="[Guide] START HERE! Get a guide on how to use this MCP server effectively. Shows recommended workflows, which tools work without external dependencies, and common use cases. Call this first if you're unsure how to use the Engram coding enhancer.",
             inputSchema={
                 "type": "object",
                 "properties": {},
@@ -193,7 +221,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="extract_code_entities",
-            description="Extract functions, classes, errors, and other entities from code. Useful for understanding code structure.",
+            description="[Analysis] Extract functions, classes, errors, and other entities from code. Useful for understanding code structure.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -212,7 +240,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="analyze_query_complexity",
-            description="Analyze a coding query to determine what context is needed. Helps decide if you need to search for more info.",
+            description="[Analysis] Analyze a coding query to determine what context is needed. Helps decide if you need to search for more info.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -226,7 +254,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="summarize_code",
-            description="Create a compressed summary of code (functions, classes, imports). Useful for storing code context efficiently.",
+            description="[Analysis] Create a compressed summary of code (functions, classes, imports). Useful for storing code context efficiently.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -240,7 +268,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="search_knowledge_graph",
-            description="Search the knowledge graph for related entities, past solutions, and connections. Requires Neo4j to be configured.",
+            description="[Search] Search the knowledge graph for related entities, past solutions, and connections. Requires Neo4j to be configured.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -259,7 +287,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="search_memories",
-            description="Search past memories for relevant context. Requires ChromaDB to be configured.",
+            description="[Search] Search past memories for relevant context. Requires ChromaDB to be configured.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -283,7 +311,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_retrieval_strategy",
-            description="Get recommended retrieval strategy for a query. Returns which sources to check (memory, graph, search, web).",
+            description="[Search] Get recommended retrieval strategy for a query. Returns which sources to check (memory, graph, search, web).",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -298,7 +326,7 @@ async def list_tools() -> List[Tool]:
         # WRITE TOOLS
         Tool(
             name="store_memory",
-            description="Store a memory/insight for future retrieval. Use this to remember solutions, patterns, user preferences, or important context.",
+            description="[Store] Store a memory/insight for future retrieval. Use this to remember solutions, patterns, user preferences, or important context.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -328,7 +356,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="store_code_entity",
-            description="Store a code entity (function, class, pattern) in the knowledge graph for relationship tracking.",
+            description="[Store] Store a code entity (function, class, pattern) in the knowledge graph for relationship tracking.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -365,7 +393,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="store_solution",
-            description="Store a complete solution with problem context. Links the error/problem to the solution in the knowledge graph.",
+            description="[Store] Store a complete solution with problem context. Links the error/problem to the solution in the knowledge graph.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -401,7 +429,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="link_entities",
-            description="Create a relationship between two entities in the knowledge graph. Supports any semantic label (e.g. 'uses', 'lives_in', 'prefers', 'built_with', 'depends_on').",
+            description="[Store] Create a relationship between two entities in the knowledge graph. Supports any semantic label (e.g. 'uses', 'lives_in', 'prefers', 'built_with', 'depends_on').",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -429,7 +457,7 @@ async def list_tools() -> List[Tool]:
         # SKILLS SYSTEM
         Tool(
             name="find_skill",
-            description="CALL THIS FIRST for any error or problem! Searches all databases for existing solutions. Returns code templates and past approaches. Auto-injects related context.",
+            description="[Skills] CALL THIS FIRST for any error or problem! Searches all databases for existing solutions. Returns code templates and past approaches. Auto-injects related context.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -447,7 +475,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="create_skill",
-            description="Create a new reusable skill from a successful solution. Use after solving a problem that might recur.",
+            description="[Skills] Create a new reusable skill from a successful solution. Use after solving a problem that might recur.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -483,7 +511,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="record_skill_outcome",
-            description="Record whether a skill worked or not. Helps improve skill confidence over time.",
+            description="[Skills] Record whether a skill worked or not. Helps improve skill confidence over time.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -502,7 +530,7 @@ async def list_tools() -> List[Tool]:
         # SESSION CONTINUITY
         Tool(
             name="create_session",
-            description="Create a persistent task session that can be resumed later. Use for complex multi-step tasks.",
+            description="[Sessions] Create a persistent task session that can be resumed later. Use for complex multi-step tasks.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -525,7 +553,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_resumable_sessions",
-            description="Get list of sessions that can be resumed. Shows in-progress tasks from previous conversations.",
+            description="[Sessions] Get list of sessions that can be resumed. Shows in-progress tasks from previous conversations.",
             inputSchema={
                 "type": "object",
                 "properties": {},
@@ -534,7 +562,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="resume_session",
-            description="Get full context to resume a previous session. Returns progress, discoveries, and working files.",
+            description="[Sessions] Get full context to resume a previous session. Returns progress, discoveries, and working files.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -548,7 +576,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="update_session",
-            description="Update session progress - advance steps, add discoveries, checkpoint progress.",
+            description="[Sessions] Update session progress - advance steps, add discoveries, checkpoint progress.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -579,7 +607,7 @@ async def list_tools() -> List[Tool]:
         # REFLECTION SYSTEM
         Tool(
             name="record_outcome",
-            description="IMPORTANT: Call this after completing ANY task! Records success/failure to improve future suggestions. Triggers auto-learning and skill generation. Required for the system to learn.",
+            description="[Reflection] IMPORTANT: Call this after completing ANY task! Records success/failure to improve future suggestions. Triggers auto-learning and skill generation. Required for the system to learn.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -616,7 +644,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_insights",
-            description="Get learning insights from past outcomes. Shows patterns, anti-patterns, and improvement suggestions.",
+            description="[Reflection] Get learning insights from past outcomes. Shows patterns, anti-patterns, and improvement suggestions.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -635,7 +663,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_reflection_stats",
-            description="Get statistics on outcomes - success rates, technology breakdown, skills effectiveness.",
+            description="[Reflection] Get statistics on outcomes - success rates, technology breakdown, skills effectiveness.",
             inputSchema={
                 "type": "object",
                 "properties": {},
@@ -645,7 +673,7 @@ async def list_tools() -> List[Tool]:
         # ADVANCED FEATURES
         Tool(
             name="generate_skill_from_outcome",
-            description="Use LLM to generate a reusable skill from a successful problem/solution. Creates triggers and code templates automatically.",
+            description="[Skills] Use LLM to generate a reusable skill from a successful problem/solution. Creates triggers and code templates automatically.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -672,7 +700,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="find_related_sessions",
-            description="Find past sessions related to a task. Useful when starting work to get context from similar past work.",
+            description="[Sessions] Find past sessions related to a task. Useful when starting work to get context from similar past work.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -691,7 +719,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_experiment_stats",
-            description="Get A/B testing statistics for skills. Shows which skills perform better.",
+            description="[Reflection] Get A/B testing statistics for skills. Shows which skills perform better.",
             inputSchema={
                 "type": "object",
                 "properties": {},
@@ -700,7 +728,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_auto_learning_status",
-            description="Get status of automatic skill learning. Shows pattern clusters, auto-generated skills, and thresholds.",
+            description="[Reflection] Get status of automatic skill learning. Shows pattern clusters, auto-generated skills, and thresholds.",
             inputSchema={
                 "type": "object",
                 "properties": {},
@@ -734,7 +762,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="store_ai_reasoning",
-            description="Store AI reasoning/thought process for a task. Use this to remember HOW you approached a problem for future reference.",
+            description="[Store] Store AI reasoning/thought process for a task. Use this to remember HOW you approached a problem for future reference.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -775,7 +803,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="search_past_reasoning",
-            description="Search AI's past reasoning to find how similar problems were approached. Returns relevant thought processes and decisions.",
+            description="[Search] Search AI's past reasoning to find how similar problems were approached. Returns relevant thought processes and decisions.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -799,7 +827,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="search_user_history",
-            description="Search past user interactions to find similar requests and how they were resolved.",
+            description="[Search] Search past user interactions to find similar requests and how they were resolved.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -822,7 +850,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="search_all_context",
-            description="RECOMMENDED: Search ALL databases at once (past requests, AI reasoning, skills, solutions). Call this at the START of complex tasks to find relevant past work and approaches.",
+            description="[Search] RECOMMENDED: Search ALL databases at once (past requests, AI reasoning, skills, solutions). Call this at the START of complex tasks to find relevant past work and approaches.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -836,7 +864,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_db_stats",
-            description="Get statistics from all 3 databases (knowledge, user interactions, AI reasoning).",
+            description="[Stats] Get statistics from all 3 databases (knowledge, user interactions, AI reasoning).",
             inputSchema={
                 "type": "object",
                 "properties": {},
@@ -846,7 +874,7 @@ async def list_tools() -> List[Tool]:
         # SMART MODEL → DUMB MODEL SKILL TRANSFER TOOLS
         Tool(
             name="create_playbook",
-            description="Create a step-by-step playbook that weaker models can follow mechanically. Smart models should call this after solving complex tasks to teach dumb models how to do it. Includes steps, code templates, decision trees, and guardrails.",
+            description="[Guide] Create a step-by-step playbook that weaker models can follow mechanically. Smart models should call this after solving complex tasks to teach dumb models how to do it. Includes steps, code templates, decision trees, and guardrails.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -892,7 +920,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="get_smart_context",
-            description="GET HELP FOR YOUR TASK! Returns playbooks, skills, solutions, and guardrails matching your task. Weak/free models should call this FIRST to get step-by-step instructions from smart model sessions. Returns everything needed to complete the task without advanced reasoning.",
+            description="[Guide] GET HELP FOR YOUR TASK! Returns playbooks, skills, solutions, and guardrails matching your task. Weak/free models should call this FIRST to get step-by-step instructions from smart model sessions. Returns everything needed to complete the task without advanced reasoning.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -907,8 +935,43 @@ async def list_tools() -> List[Tool]:
             }
         ),
         Tool(
+            name="run_workflow",
+            description="[Workflow] Run fix_error or start_task in one call: returns skills/playbooks plus workflow_next. Use instead of find_skill or get_smart_context when you want the recommended sequence.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "workflow": {
+                        "type": "string",
+                        "description": "Which workflow to run",
+                        "enum": ["fix_error", "start_task"]
+                    },
+                    "error_message": {"type": "string", "description": "The error message or problem (required for fix_error)"},
+                    "task_description": {"type": "string", "description": "What you are trying to do (required for start_task)"},
+                    "technologies": {
+                        "type": "array",
+                        "description": "Technologies involved (optional, for start_task)",
+                        "items": {"type": "string"}
+                    }
+                },
+                "required": ["workflow"]
+            }
+        ),
+        Tool(
+            name="get_workflow_prompt",
+            description="[Guide] Get the exact instruction text for a workflow (fix_error or start_task). Use when you need the model to follow the Engram workflow; returns messages you can use as a system or user prompt.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "prompt": {"type": "string", "description": "fix_error or start_task", "enum": ["fix_error", "start_task"]},
+                    "error_message": {"type": "string", "description": "For fix_error: the error or problem text"},
+                    "task_description": {"type": "string", "description": "For start_task: what you are trying to do"}
+                },
+                "required": ["prompt"]
+            }
+        ),
+        Tool(
             name="assess_task_difficulty",
-            description="Analyze a task to determine if a weak/free model can handle it or if it needs a smart model. Returns difficulty rating and whether playbooks exist to help.",
+            description="[Guide] Analyze a task to determine if a weak/free model can handle it or if it needs a smart model. Returns difficulty rating and whether playbooks exist to help.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -920,7 +983,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="record_playbook_outcome",
-            description="Record whether a playbook worked when used by a model. Helps track which playbooks are reliable for weak models.",
+            description="[Guide] Record whether a playbook worked when used by a model. Helps track which playbooks are reliable for weak models.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -933,7 +996,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="list_tools_compact",
-            description="Get a minimal list of all available tools with just names and one-line descriptions. Uses far fewer tokens than loading all tool schemas. Ideal for models with small context windows.",
+            description="[Guide] Get a minimal list of all available tools with just names and one-line descriptions. Uses far fewer tokens than loading all tool schemas. Ideal for models with small context windows.",
             inputSchema={
                 "type": "object",
                 "properties": {},
@@ -942,7 +1005,7 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="store_web_research",
-            description="IMPORTANT: Call this after ANY web research! Saves research findings (URLs, summaries, key takeaways) to the knowledge DB so they can be found later. Prevents re-researching the same topics.",
+            description="[Store] IMPORTANT: Call this after ANY web research! Saves research findings (URLs, summaries, key takeaways) to the knowledge DB so they can be found later. Prevents re-researching the same topics.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -973,8 +1036,8 @@ async def list_tools() -> List[Tool]:
 @server.call_tool()
 async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
     """Handle tool calls from Windsurf."""
-    
-    # Track context for auto-injection
+    audit_outcome = "success"
+    audit_user_id = str(arguments.get("user_id", "windsurf"))
     auto_context = None
     
     try:
@@ -1006,8 +1069,9 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 )
                 
                 # AUTO-CONTEXT: Inject relevant context for problem-solving tools
+                query_text = query_text or arguments.get("error_message", "")
                 problem_tools = ("find_skill", "create_skill", "record_outcome", "generate_skill_from_outcome", 
-                                 "store_solution", "create_session")
+                                 "store_solution", "create_session", "run_workflow")
                 if name in problem_tools and query_text:
                     try:
                         from mcp_databases import get_unified_search
@@ -2702,21 +2766,24 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             return [TextContent(type="text", text=json.dumps(payload, indent=2))]
         
         elif name == "get_db_stats":
+            cached = _cache_get("get_db_stats", 60.0)
+            if cached is not None:
+                return [TextContent(type="text", text=json.dumps(cached, indent=2))]
             from mcp_databases import get_user_interactions_db, get_ai_reasoning_db
             from mcp_knowledge_db import get_mcp_knowledge_db
-            
             user_db = get_user_interactions_db()
             ai_db = get_ai_reasoning_db()
             knowledge_db = get_mcp_knowledge_db()
-            
-            return [TextContent(type="text", text=json.dumps({
+            payload = {
                 "databases": {
                     "note": "Main app uses SQLite (data/app.db). MCP uses the 3 DBs below.",
                     "2_user_interactions": user_db.get_stats(),
                     "3_ai_reasoning": ai_db.get_stats(),
                     "4_knowledge": knowledge_db.get_stats()
                 }
-            }, indent=2))]
+            }
+            _cache_set("get_db_stats", payload, 60.0)
+            return [TextContent(type="text", text=json.dumps(payload, indent=2))]
         
         # SMART MODEL → DUMB MODEL SKILL TRANSFER HANDLERS
         elif name == "create_playbook":
@@ -2831,6 +2898,136 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             context["guardrails"] = list(set(context["guardrails"]))
             
             return [TextContent(type="text", text=json.dumps(context, indent=2))]
+        
+        elif name == "run_workflow":
+            workflow = arguments.get("workflow", "")
+            error_message = arguments.get("error_message", "")
+            task_description = arguments.get("task_description", "")
+            technologies = arguments.get("technologies", [])
+            
+            if workflow == "fix_error":
+                query = error_message or task_description
+                results = []
+                sources = []
+                skill_store = get_skill_store()
+                if skill_store:
+                    matches = await skill_store.find_matching_skills(query, None)
+                    for skill, score in matches:
+                        results.append({
+                            "id": skill.id, "name": skill.name, "description": skill.description,
+                            "match_score": round(score, 2), "confidence": round(skill.confidence, 2),
+                            "solution": skill.solution_text, "code_template": skill.code_template,
+                            "technologies": skill.technologies, "times_used": skill.times_used, "source": "mongodb"
+                        })
+                    sources.append("mongodb")
+                from mcp_knowledge_db import get_mcp_knowledge_db
+                sqlite_db = get_mcp_knowledge_db()
+                for skill in sqlite_db.find_skills(query, limit=5):
+                    if not any(r.get("name") == skill.get("name") for r in results):
+                        results.append({
+                            "id": skill.get("id", ""), "name": skill.get("name", ""),
+                            "description": skill.get("description", ""), "match_score": skill.get("match_score", 0.5),
+                            "confidence": skill.get("confidence", 0.5), "solution": skill.get("solution_text", ""),
+                            "code_template": skill.get("code_template"), "technologies": skill.get("technologies", []),
+                            "times_used": skill.get("times_used", 0), "source": "sqlite"
+                        })
+                sources.append("sqlite")
+                for sol in sqlite_db.search_solutions(query, limit=3):
+                    results.append({
+                        "id": sol.get("id", ""), "name": f"Solution: {sol.get('problem', '')[:50]}",
+                        "description": sol.get("problem", ""), "match_score": sol.get("match_score", 0.5),
+                        "confidence": 0.7, "solution": sol.get("solution", ""),
+                        "code_template": sol.get("code_after"), "technologies": sol.get("technologies", []),
+                        "times_used": sol.get("success_count", 0), "source": "sqlite_solutions"
+                    })
+                results.sort(key=lambda x: -x.get("match_score", 0))
+                if not results:
+                    out = {"workflow": "fix_error", "found": False, "message": "No matching skills found",
+                           "sources_searched": sources,
+                           "workflow_next": "After solving, call record_outcome(task_description=..., solution_applied=..., outcome='success')"}
+                else:
+                    out = {"workflow": "fix_error", "found": True, "skills": results[:10], "sources_searched": sources,
+                           "workflow_next": "After applying a skill, call record_skill_outcome(skill_id, successful)."}
+                if auto_context:
+                    out["related_context"] = auto_context
+                return [TextContent(type="text", text=json.dumps(out, indent=2))]
+            
+            if workflow == "start_task":
+                from mcp_knowledge_db import get_mcp_knowledge_db
+                db = get_mcp_knowledge_db()
+                task_desc = task_description or error_message
+                context = {"workflow": "start_task", "playbooks": [], "skills": [], "solutions": [], "guardrails": [], "has_playbook": False, "recommendation": ""}
+                playbooks = db.find_playbooks(task_desc, limit=3)
+                if playbooks:
+                    context["has_playbook"] = True
+                    for pb in playbooks:
+                        context["playbooks"].append({
+                            "id": pb["id"], "name": pb["name"], "description": pb["description"],
+                            "difficulty": pb["difficulty"], "match_score": pb["match_score"],
+                            "confidence": pb["confidence"], "steps": pb["steps"],
+                            "decision_tree": pb["decision_tree"], "code_templates": pb["code_templates"],
+                            "guardrails": pb["guardrails"], "examples": pb["examples"]
+                        })
+                        context["guardrails"].extend(pb.get("guardrails", []))
+                for skill in db.find_skills(task_desc, limit=3):
+                    context["skills"].append({
+                        "id": skill["id"], "name": skill["name"], "solution": skill.get("solution_text", ""),
+                        "code_template": skill.get("code_template"), "confidence": skill.get("confidence", 0.5),
+                        "match_score": skill.get("match_score", 0)
+                    })
+                for sol in db.search_solutions(task_desc, limit=3):
+                    context["solutions"].append({
+                        "problem": sol["problem"], "solution": sol["solution"],
+                        "code_after": sol.get("code_after", ""), "technologies": sol.get("technologies", [])
+                    })
+                if context["has_playbook"]:
+                    best = context["playbooks"][0]
+                    context["recommendation"] = f"FOLLOW THE PLAYBOOK '{best['name']}' step by step. Do NOT skip steps."
+                elif context["skills"]:
+                    context["recommendation"] = "No playbook; use matching skills. After completing, call record_outcome."
+                else:
+                    context["recommendation"] = "No playbooks or skills. Call record_outcome when done so a playbook can be generated."
+                context["guardrails"] = list(set(context["guardrails"]))
+                context["workflow_next"] = "Optionally call create_session for multi-step work. Then follow the playbook or apply skills."
+                if auto_context:
+                    context["related_context"] = auto_context
+                return [TextContent(type="text", text=json.dumps(context, indent=2))]
+            
+            return [TextContent(type="text", text=json.dumps({
+                "error": True,
+                "message": "Unknown workflow. Use workflow: 'fix_error' or 'start_task'.",
+                "fix_error": "Requires error_message (or task_description).",
+                "start_task": "Requires task_description (or error_message)."
+            }, indent=2))]
+        
+        elif name == "get_workflow_prompt":
+            prompt = arguments.get("prompt", "")
+            error_message = arguments.get("error_message", "")
+            task_description = arguments.get("task_description", "")
+            if prompt == "fix_error":
+                q = error_message or task_description or "<paste error here>"
+                content = (
+                    f"Follow the Engram fix_error workflow. "
+                    f"1. Call find_skill with query=\"{q[:200]}\" to search for solutions. "
+                    f"2. Apply the best matching skill/solution. "
+                    f"3. Call record_skill_outcome(skill_id, successful) after applying, or record_outcome if you fixed it without a skill."
+                )
+            elif prompt == "start_task":
+                t = task_description or error_message or "<paste task here>"
+                content = (
+                    f"Follow the Engram start_task workflow. "
+                    f"1. Call get_smart_context with task_description=\"{t[:200]}\" to get playbooks and skills. "
+                    f"2. If a playbook is returned, follow its steps exactly. "
+                    f"3. Optionally call create_session for multi-step work. "
+                    f"4. When done, call record_outcome so the system can learn."
+                )
+            else:
+                content = "Use prompt: fix_error or start_task."
+            return [TextContent(type="text", text=json.dumps({
+                "prompt_name": prompt,
+                "messages": [{"role": "user", "content": content}],
+                "hint": "Use these messages as the instruction for the model (e.g. system or first user message)."
+            }, indent=2))]
         
         elif name == "assess_task_difficulty":
             from mcp_knowledge_db import get_mcp_knowledge_db
@@ -3043,7 +3240,9 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 "store_ai_reasoning - Log AI thought process",
                 "search_past_reasoning - Search AI reasoning history",
                 "search_user_history - Search past user requests",
-                "get_db_stats - Database statistics"
+                "get_db_stats - Database statistics",
+                "run_workflow - Run fix_error or start_task in one call",
+                "get_workflow_prompt - Get instruction text for fix_error or start_task"
             ]
             
             return [TextContent(type="text", text=json.dumps({
@@ -3062,14 +3261,17 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             return [TextContent(type="text", text=f"Unknown tool: {name}")]
             
     except Exception as e:
+        audit_outcome = "failure"
         logger.error(f"Tool {name} failed: {e}")
         return [TextContent(type="text", text=json.dumps({"error": str(e)}))]
+    finally:
+        _audit_log_tool(name, audit_user_id, audit_outcome)
 
 
 async def main():
     """Run the MCP server."""
     logger.info("Starting Engram MCP Server...")
-    logger.info("Available tools (37 total):")
+    logger.info("Available tools (39 total):")
     logger.info("  HELP: get_mcp_guide, list_tools_compact (START HERE!)")
     logger.info("  Smart→Dumb Transfer: get_smart_context, create_playbook, assess_task_difficulty, record_playbook_outcome, list_tools_compact")
     logger.info("  Read: extract_code_entities, analyze_query_complexity, summarize_code, search_knowledge_graph, search_memories, get_retrieval_strategy")

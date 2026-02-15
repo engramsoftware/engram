@@ -1,0 +1,11 @@
+---
+description: Frontend — React, TypeScript, Tailwind, API layer
+globs: frontend/**/*.ts,frontend/**/*.tsx,frontend/**/*.css
+alwaysApply: false
+---
+
+# Frontend
+
+- Functional components and hooks only. Small, focused components; extract reusable logic into custom hooks.
+- TypeScript strict; no `any`. Define interfaces for props and API responses in `types/`. Zustand for global state.
+- Tailwind CSS for styling; mobile-first. API calls via `services/`; handle loading, error, and empty states; use error boundaries where appropriate.

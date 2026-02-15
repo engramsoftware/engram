@@ -31,7 +31,7 @@ from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from config import get_settings, PROJECT_ROOT
-from database import connect_to_mongodb, close_mongodb_connection
+from database import connect_db, close_db, get_database
 from middleware.private_network import PrivateNetworkMiddleware
 from middleware.rate_limit import RateLimitMiddleware
 
@@ -86,7 +86,7 @@ async def lifespan(app: FastAPI):
     # Log detected CORS origins so the user can verify LAN access
     logger.info(f"CORS origins: {_settings.cors_origins_list}")
 
-    await connect_to_mongodb()
+    await connect_db()
 
     # Seed built-in personas (tutor, meal planner, budget assistant)
     try:
@@ -133,7 +133,7 @@ async def lifespan(app: FastAPI):
         notification_scheduler.stop()
     except Exception:
         pass
-    await close_mongodb_connection()
+    await close_db()
 
 
 # ============================================================

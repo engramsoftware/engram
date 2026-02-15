@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "engram": {
+      "command": "docker",
+      "args": ["exec", "-i", "engram", "python", "mcp_server.py"]
+    }
+  }
+}

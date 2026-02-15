@@ -2178,7 +2178,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     else:
                         insights_list = new_insights
                     
-                    return [TextContent(type="text", text=json.dumps({
+                    payload = {
                         "insights": [
                             {
                                 "type": i.insight_type,
@@ -2190,7 +2190,10 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                         ],
                         "count": len(insights_list),
                         "source": "mongodb"
-                    }, indent=2))]
+                    }
+                    if len(insights_list) == 0:
+                        payload["message"] = "No insights yet. Record more outcomes (record_outcome) to get improvement suggestions."
+                    return [TextContent(type="text", text=json.dumps(payload, indent=2))]
                 except Exception as e:
                     logger.debug(f"MongoDB insights failed: {e}, using SQLite")
             
@@ -2234,11 +2237,14 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     "suggested_actions": ["Run generate_skill_from_outcome to create skills from patterns"]
                 })
             
-            return [TextContent(type="text", text=json.dumps({
+            payload = {
                 "insights": insights[:10],
                 "count": len(insights),
                 "source": "sqlite"
-            }, indent=2))]
+            }
+            if len(insights) == 0:
+                payload["message"] = "No insights yet. Record more outcomes (record_outcome) to get improvement suggestions."
+            return [TextContent(type="text", text=json.dumps(payload, indent=2))]
         
         elif name == "get_reflection_stats":
             reflection = get_reflection_system()

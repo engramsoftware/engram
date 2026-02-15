@@ -448,37 +448,45 @@ def extract_code_blocks(text: str) -> List[Tuple[str, str]]:
     return [(lang or "unknown", code.strip()) for lang, code in matches]
 
 
-def summarize_code(code: str, max_length: int = 200) -> str:
+def _entity_summary_line(entity: CodeEntity, max_desc: int = 50) -> str:
+    """One line per entity: signature + optional first phrase of docstring."""
+    sig = (entity.signature or entity.name).strip()
+    if entity.docstring:
+        first = entity.docstring.split("\n")[0].strip()
+        if len(first) > max_desc:
+            first = first[: max_desc - 3] + "..."
+        return f"{sig} — {first}" if first else sig
+    return sig
+
+
+def summarize_code(code: str, max_length: int = 400) -> str:
     """
     Create a compressed summary of code for memory storage.
-    
-    Stores compressed summaries rather than raw code for efficient retrieval.
+
+    Includes signatures and first line of docstrings so the summary is
+    useful for retrieval (not just a list of names).
     """
     extractor = CodeExtractor()
     entities = extractor.extract_entities(code)
-    
+
     if not entities:
         return code[:max_length]
-    
-    # Build summary from entities
+
     parts = []
-    
     classes = [e for e in entities if e.entity_type == CodeEntityType.CLASS]
     functions = [e for e in entities if e.entity_type in (CodeEntityType.FUNCTION, CodeEntityType.METHOD)]
     imports = [e for e in entities if e.entity_type == CodeEntityType.IMPORT]
-    
+
     if classes:
-        parts.append(f"Classes: {', '.join(c.name for c in classes[:3])}")
-    
+        lines = [_entity_summary_line(c) for c in classes[:3]]
+        parts.append("Classes: " + "; ".join(lines))
     if functions:
-        parts.append(f"Functions: {', '.join(f.name for f in functions[:5])}")
-    
+        lines = [_entity_summary_line(f) for f in functions[:5]]
+        parts.append("Functions: " + "; ".join(lines))
     if imports:
-        parts.append(f"Imports: {', '.join(i.name.split('.')[-1] for i in imports[:5])}")
-    
+        parts.append("Imports: " + ", ".join(i.name.split(".")[-1] for i in imports[:5]))
+
     summary = "; ".join(parts)
-    
     if len(summary) > max_length:
-        return summary[:max_length-3] + "..."
-    
+        return summary[: max_length - 3] + "..."
     return summary

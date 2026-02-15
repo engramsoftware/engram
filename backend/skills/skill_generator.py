@@ -78,39 +78,34 @@ class SkillGenerator:
         self._llm_provider = None
     
     @staticmethod
-    def _resolve_user_llm_config() -> Optional[Dict[str, Any]]:
-        """Fetch the user's LLM provider config from MongoDB (sync).
+    async def _resolve_user_llm_config() -> Optional[Dict[str, Any]]:
+        """Fetch the user's LLM provider config from the database (async).
 
         Reads the first llm_settings document, finds the default (or any
         enabled) provider, decrypts the API key, and returns a dict with
         keys: provider_name, api_key, base_url, model.
 
-        The API keys stored in MongoDB were encrypted by the FastAPI server
+        The API keys stored in the DB were encrypted by the FastAPI server
         which runs with CWD=backend/.  The MCP server may run from the
         project root with a *different* .env, so we derive the Fernet key
         from the backend/.env encryption key explicitly to ensure we can
         always decrypt.
 
         Returns:
-            Config dict or None if MongoDB is unreachable or no provider
+            Config dict or None if DB is unreachable or no provider
             is configured.
         """
         try:
-            import pymongo
             import hashlib
             import base64
             from pathlib import Path
             from cryptography.fernet import Fernet
             from config import get_settings
+            from database import get_database
 
             settings = get_settings()
-            client = pymongo.MongoClient(
-                settings.mongodb_uri,
-                serverSelectionTimeoutMS=2000,
-            )
-            db = client[settings.mongodb_database]
-            doc = db.llm_settings.find_one()
-            client.close()
+            db = get_database()
+            doc = await db.llm_settings.find_one({})
 
             if not doc:
                 return None
@@ -171,14 +166,14 @@ class SkillGenerator:
                 "model": model,
             }
         except Exception as e:
-            logger.debug(f"Could not resolve user LLM config from MongoDB: {e}")
+            logger.debug(f"Could not resolve user LLM config from database: {e}")
             return None
 
-    def _get_llm(self):
+    async def _get_llm(self):
         """Get LLM provider lazily.
 
         Resolution order:
-        1. User's configured provider from MongoDB (same key the chat uses)
+        1. User's configured provider from database (same key the chat uses)
         2. Local providers (LM Studio / Ollama — free, no API key)
         3. .env fallback keys (only if they look valid)
 
@@ -191,8 +186,8 @@ class SkillGenerator:
                 from config import get_settings
                 settings = get_settings()
 
-                # 1. Try the user's configured provider from MongoDB
-                user_cfg = self._resolve_user_llm_config()
+                # 1. Try the user's configured provider from database
+                user_cfg = await self._resolve_user_llm_config()
                 if user_cfg and user_cfg.get("provider_name"):
                     try:
                         self._llm_provider = create_provider(
@@ -258,7 +253,7 @@ class SkillGenerator:
             except Exception as e:
                 logger.warning(f"Could not initialize LLM for skill generation: {e}")
         return self._llm_provider
-    
+
     async def generate_skill_from_outcome(
         self,
         problem: str,
@@ -271,7 +266,7 @@ class SkillGenerator:
         
         Returns None if generation fails or skill isn't generalizable enough.
         """
-        llm = self._get_llm()
+        llm = await self._get_llm()
         if not llm:
             logger.warning("No LLM available for skill generation")
             return self._generate_skill_heuristically(problem, solution, code, technologies)

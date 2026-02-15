@@ -375,7 +375,7 @@ async def chat_completions(
     """
     try:
         # Get database
-        # get_database() returns an AsyncIOMotorDatabase, not an awaitable.
+        # get_database() returns the SQLite database instance (collection-style API), not an awaitable.
         db = get_database()
 
         # Try to authenticate via JWT if a Bearer token is provided

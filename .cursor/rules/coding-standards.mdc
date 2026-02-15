@@ -1,0 +1,24 @@
+---
+description: Coding standards — typing, security, API keys, data paths, never dumb down
+alwaysApply: true
+---
+
+# Coding Standards
+
+## Python
+- Type all parameters and returns; use `Optional[]`, `List[]`, `Dict[]`. Async for DB and LLM; use `asyncio.gather()` for parallel work.
+- Use Pydantic for models. API/document fields camelCase where exposed; Python snake_case.
+- Logging: INFO normal, DEBUG trace, WARNING recoverable, ERROR failure. Early returns. No hardcoded config — use .env.
+- Don't modify core pipeline to add tools — use registry/addin pattern.
+
+## Security
+- Never hardcode API keys or secrets. Parameterized queries. Validate/sanitize input. Never paste secrets into prompts.
+
+## Data paths
+- Use constants from `backend/config.py` (e.g. `DATA_DIR`, `CHROMA_MESSAGES_DIR`, `MCP_KNOWLEDGE_DB`). Never hardcode `Path(__file__).parent / "data" / "foo"`. New data dirs: add to config and .gitignore.
+
+## API keys
+- User keys stored encrypted in DB (`llm_settings`). Prefer decrypted key from `get_database().llm_settings`; .env is fallback. Use `decrypt_api_key()` from `utils.encryption`. For extractors, pass `api_key=` and `base_url=` explicitly; `base_url` only for lmstudio/ollama.
+
+## Never dumb down
+- Don't simplify or remove features without explicit approval. Don't replace working code with "simpler" versions. Don't remove error handling or fallbacks. If stuck after 2–3 attempts, ask the user; don't silently substitute a weaker solution. Preserve all behavior when refactoring.

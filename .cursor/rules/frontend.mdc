@@ -1,6 +1,9 @@
 ---
 description: Frontend — React, TypeScript, Tailwind, API layer
-globs: frontend/**/*.ts,frontend/**/*.tsx,frontend/**/*.css
+globs:
+  - "frontend/**/*.ts"
+  - "frontend/**/*.tsx"
+  - "frontend/**/*.css"
 alwaysApply: false
 ---
 

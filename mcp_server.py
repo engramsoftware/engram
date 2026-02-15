@@ -73,6 +73,13 @@ except ImportError:
     from mcp.server.stdio import stdio_server
     from mcp.types import Tool, TextContent
 
+# Optional: Resource type for MCP resources (playbooks/skills)
+try:
+    from mcp.types import Resource
+except ImportError:
+    Resource = None  # type: ignore
+ENGRAM_RESOURCE_SCHEME = "engram"
+
 # Add backend to path
 import os
 backend_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "backend")
@@ -111,6 +118,9 @@ def _cache_get(key: str, ttl_sec: float) -> Optional[Any]:
 def _cache_set(key: str, value: Any, ttl_sec: float) -> None:
     import time
     _mcp_cache[key] = (time.time() + ttl_sec, value)
+def _cache_invalidate(key: str) -> None:
+    if key in _mcp_cache:
+        del _mcp_cache[key]
 
 # Lazy-loaded components
 _code_extractor = None
@@ -1029,8 +1039,120 @@ async def list_tools() -> List[Tool]:
                 },
                 "required": ["topic", "findings"]
             }
+        ),
+        # Fetch URL -> text/markdown
+        Tool(
+            name="fetch_url",
+            description="[Fetch] Fetch a URL and return its content as text or markdown. Use for reading web pages, docs, or APIs. Respects size and time limits.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "url": {"type": "string", "description": "Full URL to fetch (http or https)"},
+                    "max_chars": {"type": "integer", "description": "Max characters to return (default 100000)", "default": 100000},
+                    "timeout_sec": {"type": "number", "description": "Request timeout in seconds (default 15)", "default": 15}
+                },
+                "required": ["url"]
+            }
+        ),
+        # Current time / timezone
+        Tool(
+            name="get_time",
+            description="[Time] Get current date and time, optionally in a given timezone (IANA name, e.g. America/New_York, UTC).",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "timezone": {"type": "string", "description": "IANA timezone (e.g. UTC, America/New_York). Omit for local time."}
+                },
+                "required": []
+            }
+        ),
+        # Git read-only
+        Tool(
+            name="git_status",
+            description="[Git] Read-only. Get current branch and status (clean/dirty, list of changed files). Optionally specify repo path.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repo_path": {"type": "string", "description": "Path to git repo (default: current working directory)"}
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="git_log",
+            description="[Git] Read-only. Get recent commit log (branch, commit hash, message). Optionally specify repo path and limit.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repo_path": {"type": "string", "description": "Path to git repo (default: current working directory)"},
+                    "limit": {"type": "integer", "description": "Max number of commits (default 10)", "default": 10}
+                },
+                "required": []
+            }
+        ),
+        Tool(
+            name="git_diff",
+            description="[Git] Read-only. Get diff (working tree and/or staged). Optionally specify repo path.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repo_path": {"type": "string", "description": "Path to git repo (default: current working directory)"},
+                    "staged": {"type": "boolean", "description": "If true, show staged diff only; else working tree", "default": False}
+                },
+                "required": []
+            }
         )
     ]
+
+
+@server.list_resources()
+async def list_resources() -> List[Any]:
+    """List MCP resources: playbooks and skills (engram://playbook/<id>, engram://skill/<id>)."""
+    if Resource is None:
+        return []
+    try:
+        from mcp_knowledge_db import get_mcp_knowledge_db
+        db = get_mcp_knowledge_db()
+        out: List[Any] = []
+        for pb in db.list_playbooks_for_resources():
+            uri = f"{ENGRAM_RESOURCE_SCHEME}://playbook/{pb['id']}"
+            out.append(Resource(uri=uri, name=pb["name"], description=pb.get("description") or None))
+        for sk in db.list_skills_for_resources():
+            uri = f"{ENGRAM_RESOURCE_SCHEME}://skill/{sk['id']}"
+            out.append(Resource(uri=uri, name=sk["name"], description=sk.get("description") or None))
+        return out
+    except Exception as e:
+        logger.debug(f"list_resources failed: {e}")
+        return []
+
+
+@server.read_resource()
+async def read_resource(uri: Any) -> str:
+    """Read a resource by URI (engram://playbook/<id> or engram://skill/<id>)."""
+    uri_str = str(uri) if hasattr(uri, "__str__") else uri
+    if not uri_str.startswith(f"{ENGRAM_RESOURCE_SCHEME}://"):
+        raise ValueError(f"Unknown resource scheme: {uri_str}")
+    try:
+        from mcp_knowledge_db import get_mcp_knowledge_db
+        db = get_mcp_knowledge_db()
+        if uri_str.startswith(f"{ENGRAM_RESOURCE_SCHEME}://playbook/"):
+            pid = uri_str.split("/", 3)[-1]
+            pb = db.get_playbook(pid)
+            if not pb:
+                raise ValueError(f"Playbook not found: {pid}")
+            return json.dumps(pb, indent=2)
+        if uri_str.startswith(f"{ENGRAM_RESOURCE_SCHEME}://skill/"):
+            sid = uri_str.split("/", 3)[-1]
+            sk = db.get_skill(sid)
+            if not sk:
+                raise ValueError(f"Skill not found: {sid}")
+            return json.dumps(sk, indent=2)
+        raise ValueError(f"Unknown resource type: {uri_str}")
+    except ValueError:
+        raise
+    except Exception as e:
+        logger.debug(f"read_resource failed: {e}")
+        raise ValueError(str(e)) from e
 
 
 @server.call_tool()
@@ -1086,7 +1208,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         # GUIDE - Help dumb models understand how to use this MCP
         if name == "get_mcp_guide":
             guide = {
-                "welcome": "Engram Coding Enhancer MCP - 37 tools for AI coding memory, learning & skill transfer",
+                "welcome": "Engram Coding Enhancer MCP - 44 tools for AI coding memory, learning & skill transfer (includes fetch_url, get_time, git_status, git_log, git_diff; playbooks/skills as MCP resources)",
                 "quick_start": [
                     "1. FIRST: Call get_smart_context with your task - get playbooks, skills, and solutions",
                     "2. IF PLAYBOOK FOUND: Follow it step by step - do NOT improvise",
@@ -1163,8 +1285,16 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     ],
                     "stats": [
                         "get_db_stats - All database statistics"
+                    ],
+                    "fetch_and_git": [
+                        "fetch_url - Fetch URL content as text",
+                        "get_time - Current time (optional timezone)",
+                        "git_status - Branch and changed files",
+                        "git_log - Recent commits",
+                        "git_diff - Working tree or staged diff"
                     ]
                 },
+                "resources": "Playbooks and skills are exposed as MCP resources (engram://playbook/<id>, engram://skill/<id>). Use list_resources/read_resource from an MCP client to read them.",
                 "databases": {
                     "1_knowledge": "data/mcp_knowledge.db - Skills, solutions, memories, playbooks",
                     "2_user_interactions": "data/user_interactions.db - User requests (auto-logged)",
@@ -1366,6 +1496,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         
         # WRITE TOOLS
         elif name == "store_memory":
+            _cache_invalidate("get_db_stats")
             content = arguments.get("content", "")
             memory_type = arguments.get("memory_type", "fact")
             user_id = arguments.get("user_id", "windsurf")
@@ -1433,6 +1564,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     }, indent=2))]
         
         elif name == "store_code_entity":
+            _cache_invalidate("get_db_stats")
             graph = get_graph_store()
             if not graph or not graph.is_available:
                 # Fallback to SQLite - store as a solution/memory
@@ -1512,6 +1644,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             }, indent=2))]
         
         elif name == "store_solution":
+            _cache_invalidate("get_db_stats")
             problem = arguments.get("problem", "")
             solution = arguments.get("solution", "")
             code_before = arguments.get("code_before", "")
@@ -1630,6 +1763,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             }, indent=2))]
         
         elif name == "link_entities":
+            _cache_invalidate("get_db_stats")
             graph = get_graph_store()
             if not graph or not graph.is_available:
                 # SQLite doesn't support relationships, but we can note the link
@@ -1689,9 +1823,14 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         
         # SKILLS SYSTEM HANDLERS
         elif name == "find_skill":
-            query = arguments.get("query", "")
+            query = (arguments.get("query", "") or "").strip()
             file_path = arguments.get("file_path")
-            
+            if not query:
+                return [TextContent(type="text", text=json.dumps({
+                    "found": False,
+                    "message": "Provide a non-empty query (e.g. the error message or problem description).",
+                    "next_action": "Call find_skill with query set to the error text or problem you are solving."
+                }, indent=2))]
             results = []
             sources = []
             
@@ -1777,6 +1916,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             return [TextContent(type="text", text=json.dumps(response, indent=2))]
         
         elif name == "create_skill":
+            _cache_invalidate("get_db_stats")
             skill_name = arguments.get("name", "")
             skill_desc = arguments.get("description", "")
             triggers = arguments.get("triggers", [])
@@ -1835,6 +1975,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             }, indent=2))]
         
         elif name == "record_skill_outcome":
+            _cache_invalidate("get_db_stats")
             skill_id = arguments.get("skill_id", "")
             successful = arguments.get("successful", False)
             new_confidence = 0.5
@@ -1867,6 +2008,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         
         # SESSION CONTINUITY HANDLERS
         elif name == "create_session":
+            _cache_invalidate("get_db_stats")
             session_mgr = get_session_manager()
             
             # Try MongoDB first, fall back to SQLite
@@ -2005,6 +2147,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             }, indent=2))]
         
         elif name == "update_session":
+            _cache_invalidate("get_db_stats")
             session_id = arguments.get("session_id", "")
             session_mgr = get_session_manager()
             
@@ -2091,6 +2234,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         
         # REFLECTION SYSTEM HANDLERS
         elif name == "record_outcome":
+            _cache_invalidate("get_db_stats")
             task_desc = arguments.get("task_description", "")
             solution = arguments.get("solution_applied", "")
             outcome_type = arguments.get("outcome", "unknown")
@@ -2359,6 +2503,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         
         # ADVANCED FEATURES HANDLERS
         elif name == "generate_skill_from_outcome":
+            _cache_invalidate("get_db_stats")
             problem = arguments.get("problem", "")
             solution_text = arguments.get("solution", "")
             code = arguments.get("code")
@@ -2601,6 +2746,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         
         # 3-DATABASE SYSTEM HANDLERS
         elif name == "store_user_interaction":
+            _cache_invalidate("get_db_stats")
             from mcp_databases import get_user_interactions_db
             db = get_user_interactions_db()
             
@@ -2617,6 +2763,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             }, indent=2))]
         
         elif name == "store_ai_reasoning":
+            _cache_invalidate("get_db_stats")
             from mcp_databases import get_ai_reasoning_db, ReasoningType
             db = get_ai_reasoning_db()
             
@@ -2787,6 +2934,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         
         # SMART MODEL → DUMB MODEL SKILL TRANSFER HANDLERS
         elif name == "create_playbook":
+            _cache_invalidate("get_db_stats")
             from mcp_knowledge_db import get_mcp_knowledge_db
             db = get_mcp_knowledge_db()
             
@@ -2906,7 +3054,14 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             technologies = arguments.get("technologies", [])
             
             if workflow == "fix_error":
-                query = error_message or task_description
+                query = (error_message or task_description or "").strip()
+                if not query:
+                    return [TextContent(type="text", text=json.dumps({
+                        "workflow": "fix_error",
+                        "error": True,
+                        "message": "Provide error_message or task_description for fix_error.",
+                        "workflow_next": "Then call run_workflow again with the error text."
+                    }, indent=2))]
                 results = []
                 sources = []
                 skill_store = get_skill_store()
@@ -2955,7 +3110,14 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             if workflow == "start_task":
                 from mcp_knowledge_db import get_mcp_knowledge_db
                 db = get_mcp_knowledge_db()
-                task_desc = task_description or error_message
+                task_desc = (task_description or error_message or "").strip()
+                if not task_desc:
+                    return [TextContent(type="text", text=json.dumps({
+                        "workflow": "start_task",
+                        "error": True,
+                        "message": "Provide task_description or error_message for start_task.",
+                        "workflow_next": "Then call run_workflow again with the task."
+                    }, indent=2))]
                 context = {"workflow": "start_task", "playbooks": [], "skills": [], "solutions": [], "guardrails": [], "has_playbook": False, "recommendation": ""}
                 playbooks = db.find_playbooks(task_desc, limit=3)
                 if playbooks:
@@ -2987,6 +3149,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     context["recommendation"] = "No playbook; use matching skills. After completing, call record_outcome."
                 else:
                     context["recommendation"] = "No playbooks or skills. Call record_outcome when done so a playbook can be generated."
+                    context["message"] = "No playbooks, skills, or solutions found for this task."
                 context["guardrails"] = list(set(context["guardrails"]))
                 context["workflow_next"] = "Optionally call create_session for multi-step work. Then follow the playbook or apply skills."
                 if auto_context:
@@ -3126,6 +3289,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             }, indent=2))]
         
         elif name == "record_playbook_outcome":
+            _cache_invalidate("get_db_stats")
             from mcp_knowledge_db import get_mcp_knowledge_db
             db = get_mcp_knowledge_db()
             
@@ -3163,6 +3327,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             }, indent=2))]
         
         elif name == "store_web_research":
+            _cache_invalidate("get_db_stats")
             from mcp_knowledge_db import get_mcp_knowledge_db
             db = get_mcp_knowledge_db()
             
@@ -3242,7 +3407,12 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 "search_user_history - Search past user requests",
                 "get_db_stats - Database statistics",
                 "run_workflow - Run fix_error or start_task in one call",
-                "get_workflow_prompt - Get instruction text for fix_error or start_task"
+                "get_workflow_prompt - Get instruction text for fix_error or start_task",
+                "fetch_url - Fetch URL content as text",
+                "get_time - Current time (optional timezone)",
+                "git_status - Git branch and changed files",
+                "git_log - Recent commits",
+                "git_diff - Working tree or staged diff"
             ]
             
             return [TextContent(type="text", text=json.dumps({
@@ -3255,6 +3425,132 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     "3. record_playbook_outcome({playbook_id: '...', successful: true/false}) - report result",
                     "4. record_outcome({task_description: '...', solution_applied: '...', outcome: 'success'}) - log for learning"
                 ]
+            }, indent=2))]
+        
+        elif name == "fetch_url":
+            url = (arguments.get("url") or "").strip()
+            if not url:
+                return [TextContent(type="text", text=json.dumps({"error": "url is required"}))]
+            max_chars = int(arguments.get("max_chars") or 100000)
+            timeout_sec = float(arguments.get("timeout_sec") or 15)
+            try:
+                import httpx
+            except ImportError:
+                return [TextContent(type="text", text=json.dumps({"error": "httpx not installed", "install": "pip install httpx"}))]
+            try:
+                with httpx.Client(timeout=timeout_sec, follow_redirects=True) as client:
+                    resp = client.get(url)
+                    resp.raise_for_status()
+                    content = resp.text
+            except Exception as e:
+                return [TextContent(type="text", text=json.dumps({"error": str(e), "url": url}))]
+            if len(content) > max_chars:
+                content = content[:max_chars] + "\n\n[... truncated ...]"
+            # Simple HTML -> text: strip tags if present
+            if "<" in content and ">" in content:
+                import re
+                content = re.sub(r"<script[^>]*>[\s\S]*?</script>", "", content, flags=re.IGNORECASE)
+                content = re.sub(r"<style[^>]*>[\s\S]*?</style>", "", content, flags=re.IGNORECASE)
+                content = re.sub(r"<[^>]+>", " ", content)
+                content = re.sub(r"\s+", " ", content).strip()
+            return [TextContent(type="text", text=content)]
+        
+        elif name == "get_time":
+            try:
+                from datetime import datetime
+                from zoneinfo import ZoneInfo
+            except ImportError:
+                from datetime import datetime
+                ZoneInfo = None  # type: ignore
+            tz_name = (arguments.get("timezone") or "").strip()
+            if tz_name:
+                if ZoneInfo is None:
+                    return [TextContent(type="text", text=json.dumps({"error": "zoneinfo not available (Python 3.9+)"}))]
+                try:
+                    tz = ZoneInfo(tz_name)
+                except Exception as e:
+                    return [TextContent(type="text", text=json.dumps({"error": str(e), "timezone": tz_name}))]
+                now = datetime.now(tz)
+            else:
+                now = datetime.now()
+                tz_name = "local"
+            return [TextContent(type="text", text=json.dumps({
+                "iso": now.isoformat(),
+                "timezone": tz_name,
+                "date": now.strftime("%Y-%m-%d"),
+                "time": now.strftime("%H:%M:%S")
+            }, indent=2))]
+        
+        elif name == "git_status":
+            repo_path = (arguments.get("repo_path") or os.getcwd()).strip() or os.getcwd()
+            try:
+                import subprocess
+                r = subprocess.run(
+                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                    cwd=repo_path, capture_output=True, text=True, timeout=5
+                )
+                branch = (r.stdout or "").strip() if r.returncode == 0 else None
+                r2 = subprocess.run(
+                    ["git", "status", "--porcelain"],
+                    cwd=repo_path, capture_output=True, text=True, timeout=5
+                )
+                lines = (r2.stdout or "").strip().splitlines() if r2.returncode == 0 else []
+            except FileNotFoundError:
+                return [TextContent(type="text", text=json.dumps({"error": "git not found", "repo_path": repo_path}))]
+            except subprocess.TimeoutExpired:
+                return [TextContent(type="text", text=json.dumps({"error": "git command timed out", "repo_path": repo_path}))]
+            except Exception as e:
+                return [TextContent(type="text", text=json.dumps({"error": str(e), "repo_path": repo_path}))]
+            return [TextContent(type="text", text=json.dumps({
+                "repo_path": repo_path,
+                "branch": branch or "unknown",
+                "clean": len(lines) == 0,
+                "changed_files": lines
+            }, indent=2))]
+        
+        elif name == "git_log":
+            repo_path = (arguments.get("repo_path") or os.getcwd()).strip() or os.getcwd()
+            limit = int(arguments.get("limit") or 10)
+            try:
+                import subprocess
+                r = subprocess.run(
+                    ["git", "log", f"-{limit}", "--format=%H %s"],
+                    cwd=repo_path, capture_output=True, text=True, timeout=10
+                )
+                log_lines = (r.stdout or "").strip().splitlines() if r.returncode == 0 else []
+            except FileNotFoundError:
+                return [TextContent(type="text", text=json.dumps({"error": "git not found", "repo_path": repo_path}))]
+            except subprocess.TimeoutExpired:
+                return [TextContent(type="text", text=json.dumps({"error": "git command timed out", "repo_path": repo_path}))]
+            except Exception as e:
+                return [TextContent(type="text", text=json.dumps({"error": str(e), "repo_path": repo_path}))]
+            commits = []
+            for line in log_lines:
+                parts = line.split(" ", 1)
+                commits.append({"hash": parts[0], "message": parts[1] if len(parts) > 1 else ""})
+            return [TextContent(type="text", text=json.dumps({
+                "repo_path": repo_path,
+                "commits": commits
+            }, indent=2))]
+        
+        elif name == "git_diff":
+            repo_path = (arguments.get("repo_path") or os.getcwd()).strip() or os.getcwd()
+            staged = bool(arguments.get("staged"))
+            try:
+                import subprocess
+                args = ["git", "diff", "--staged"] if staged else ["git", "diff"]
+                r = subprocess.run(args, cwd=repo_path, capture_output=True, text=True, timeout=15)
+                diff_out = (r.stdout or "") if r.returncode == 0 else (r.stderr or str(r))
+            except FileNotFoundError:
+                return [TextContent(type="text", text=json.dumps({"error": "git not found", "repo_path": repo_path}))]
+            except subprocess.TimeoutExpired:
+                return [TextContent(type="text", text=json.dumps({"error": "git command timed out", "repo_path": repo_path}))]
+            except Exception as e:
+                return [TextContent(type="text", text=json.dumps({"error": str(e), "repo_path": repo_path}))]
+            return [TextContent(type="text", text=json.dumps({
+                "repo_path": repo_path,
+                "staged": staged,
+                "diff": diff_out
             }, indent=2))]
         
         else:
@@ -3271,7 +3567,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
 async def main():
     """Run the MCP server."""
     logger.info("Starting Engram MCP Server...")
-    logger.info("Available tools (39 total):")
+    logger.info("Available tools (44 total): fetch_url, get_time, git_status, git_log, git_diff + 39 Engram tools")
     logger.info("  HELP: get_mcp_guide, list_tools_compact (START HERE!)")
     logger.info("  Smart→Dumb Transfer: get_smart_context, create_playbook, assess_task_difficulty, record_playbook_outcome, list_tools_compact")
     logger.info("  Read: extract_code_entities, analyze_query_complexity, summarize_code, search_knowledge_graph, search_memories, get_retrieval_strategy")

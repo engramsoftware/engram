@@ -1,27 +1,20 @@
 ---
-description: Engram project architecture — stack, database, startup, key dirs
+description: Engram project architecture — stack, key dirs, MCP pointer
 alwaysApply: true
 ---
 
 # Project: Engram
 
-Local-first AI chat with memory, knowledge graph, RAG, web search, addins. Same context as `.windsurf/rules/` (Windsurf); full wiring in `.windsurf/rules/FEATURES.md` if you need it.
+Local-first AI chat with memory, knowledge graph, RAG, web search, addins.
 
 ## Stack
-- **Backend:** Python 3.11, FastAPI, uvicorn
-- **Database:** SQLite only (aiosqlite, collection-style API via `backend/sqlite_db.py`). Single `data/app.db`. No MongoDB.
-- **Vector:** ChromaDB (file-based under `data/chroma/`)
-- **Graph:** Neo4j Aura optional
-- **Frontend:** React 18, TypeScript, Vite, Tailwind, Zustand
-- **Startup:** Production = `docker compose up` (port 8000). Local = venv + `backend/.env`, uvicorn (+ optional Vite).
+- **Backend:** Python 3.11, FastAPI, uvicorn. **DB:** SQLite only (`backend/sqlite_db.py`), single `data/app.db`. **Vector:** ChromaDB (`data/chroma/`). **Graph:** Neo4j optional.
+- **Frontend:** React 18, TypeScript, Vite, Tailwind, Zustand.
+- **Startup:** Production = `docker compose up` (8000). Local = venv + `backend/.env` + uvicorn.
 
 ## Key dirs
-- `backend/` — routers, pipeline, llm, memory, search, addins, skills, config, database, sqlite_db
+- `backend/` — routers, pipeline, llm, memory, addins, skills, config, database
 - `frontend/src/` — components, stores, services, types, pages
-- `data/` — ALL user data (app.db, chroma, mcp, learning, uploads, logs). Use constants from `backend/config.py` for paths.
+- `data/` — all user data (app.db, chroma, mcp, learning, uploads). Paths from `backend/config.py`.
 
-## DB access
-- `from database import get_database` then `db = get_database()`; use `db.users`, `db.llm_settings`, etc. (async methods: `find_one`, `insert_one`, `update_one`).
-
-## Engram MCP
-- This project has the Engram MCP server (see `.cursor/mcp.json`). **Follow the rule** `.cursor/rules/engram-mcp-usage.mdc`: call `get_smart_context` when starting tasks, `find_skill` for errors, `record_outcome` after solving.
+For DB access and config wiring see **@project-wiring**. For MCP workflow see **@engram-mcp-usage**.

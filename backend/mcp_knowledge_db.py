@@ -806,6 +806,26 @@ class MCPKnowledgeDB:
                 return pb
             return None
     
+    def list_playbooks_for_resources(self) -> List[Dict]:
+        """List playbooks for MCP resources (id, name, description)."""
+        with self._get_conn() as conn:
+            rows = conn.execute("SELECT id, name, description FROM playbooks ORDER BY name").fetchall()
+            return [{"id": r["id"], "name": r["name"] or r["id"], "description": (r["description"] or "")[:200]} for r in rows]
+    
+    def list_skills_for_resources(self) -> List[Dict]:
+        """List skills for MCP resources (id, name, description)."""
+        with self._get_conn() as conn:
+            rows = conn.execute("SELECT id, name, description FROM skills ORDER BY name").fetchall()
+            return [{"id": r["id"], "name": r["name"] or r["id"], "description": (r["description"] or "")[:200]} for r in rows]
+    
+    def get_skill(self, skill_id: str) -> Optional[Dict]:
+        """Get a skill by ID."""
+        with self._get_conn() as conn:
+            row = conn.execute("SELECT * FROM skills WHERE id = ?", (skill_id,)).fetchone()
+            if row:
+                return dict(row)
+            return None
+    
     # ==================== UTILITIES ====================
     
     def _generate_id(self) -> str:

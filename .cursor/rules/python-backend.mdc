@@ -1,6 +1,8 @@
 ---
 description: Python backend — async, error handling, models, testing
-globs: backend/**/*.py,mcp_server.py
+globs:
+  - "backend/**/*.py"
+  - "mcp_server.py"
 alwaysApply: false
 ---
 

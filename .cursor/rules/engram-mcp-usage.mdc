@@ -5,7 +5,14 @@ alwaysApply: true
 
 # Engram MCP usage (this project)
 
-This project has the **Engram** MCP server (39 tools). Use it so the system learns and future sessions get playbooks/skills.
+This project has the **Engram** MCP server (44 tools). Use it so the system learns and future sessions get playbooks/skills.
+
+## Mandatory checklist (do not skip)
+- **Start of any non-trivial task:** Call `get_smart_context` with `task_description` (or `get_mcp_guide` if unsure). Do this before editing code.
+- **End of any task:** Call `record_outcome` with `task_description`, `solution_applied`, and `outcome`. Do this after you’re done.
+- **When debugging an error:** Call `find_skill` with the error message (or `run_workflow` with `workflow: "fix_error"`), then `record_skill_outcome` if you used a skill.
+
+If you skip these, the project does not learn and playbooks stay stale. Treat the checklist as required, not optional.
 
 ## One-call workflows
 - **Fix error:** `run_workflow` with `workflow: "fix_error"` and `error_message`. **Start task:** `run_workflow` with `workflow: "start_task"` and `task_description`. Or `get_workflow_prompt` for instruction text.
@@ -28,6 +35,8 @@ This project has the **Engram** MCP server (39 tools). Use it so the system lear
 
 ## Other useful tools
 - **Web research:** After any web search, call `store_web_research` with topic, URLs, and findings.
-- **Full tool list:** Use `list_tools_compact` (saves tokens) or re-read this rule; full guide: `get_mcp_guide`.
+- **Full tool list:** Call `list_tools_compact` (saves tokens) or `get_mcp_guide` for the full guide — don’t inline every tool here.
+- **Tool picker:** If your client limits which Engram tools are available, still follow the workflow with whatever tools you have (e.g. get_smart_context, find_skill, record_outcome when available).
+- **Resources:** Playbooks and skills are exposed as MCP resources (`engram://playbook/<id>`, `engram://skill/<id>`). Use list_resources/read_resource when your client supports it.
 
 Do not ignore these tools; using them improves future answers and playbooks for this project.

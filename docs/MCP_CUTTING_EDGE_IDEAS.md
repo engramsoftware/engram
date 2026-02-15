@@ -172,6 +172,47 @@ This gives users (and Cursor) a one-click way to run the recommended Engram work
 
 ---
 
+## MCP server types we don't have
+
+Engram is a **coding-enhancer / memory / skills / playbooks** MCP. It does **not** provide the following server types (common in the ecosystem). Useful when considering adding a separate MCP or integrating capabilities.
+
+| Type | What it does | Official / notable |
+|------|----------------|--------------------|
+| **Time** | Time and timezone conversion (e.g. "what time is it in Tokyo?", convert ISO strings). | [modelcontextprotocol/servers – time](https://github.com/modelcontextprotocol/servers/tree/main/src/time) |
+| **Sequential thinking** | Reflective problem-solving via thought sequences (multi-step reasoning as a first-class tool). | [modelcontextprotocol/servers – sequentialthinking](https://github.com/modelcontextprotocol/servers/tree/main/src/sequentialthinking) |
+| **Git** | Read, search, and manipulate Git repositories (status, diff, log, branch, commit). | [modelcontextprotocol/servers – git](https://github.com/modelcontextprotocol/servers/tree/main/src/git), `uvx mcp-server-git` |
+| **Filesystem** | Secure file read/write with path allowlists (read file, write file, list dir). | [modelcontextprotocol/servers – filesystem](https://github.com/modelcontextprotocol/servers/tree/main/src/filesystem) |
+| **Fetch** | Fetch URL content and convert to LLM-friendly format (e.g. HTML → markdown). | [modelcontextprotocol/servers – fetch](https://github.com/modelcontextprotocol/servers/tree/main/src/fetch) |
+| **PostgreSQL / SQL** | Read-only DB access: list tables, inspect schema, run SELECT queries. | [modelcontextprotocol/servers – postgres](https://github.com/modelcontextprotocol/servers/tree/main/src/postgres) |
+| **GitHub** | Repos, issues, pull requests, search (needs GitHub token). | Official integrations in [modelcontextprotocol/servers](https://github.com/modelcontextprotocol/servers) |
+| **Brave Search** | Web search API (brave_web_search, brave_image_search, etc.; needs API key). | [brave/brave-search-mcp-server](https://github.com/brave/brave-search-mcp-server) |
+| **Slack** | Channels, DMs, message search/send (session or OAuth). | Community (e.g. [Slack MCP Server](https://mcpservers.org/servers/jtalk22/slack-mcp-server)) |
+| **Google Workspace** | Google Docs, Sheets, Slides, Gmail, Calendar (OAuth). | [google/mcp](https://github.com/google/mcp) |
+| **Kubernetes / GKE** | Cluster and workload inspection/management. | [google/mcp](https://github.com/google/mcp) |
+| **Browser / Puppeteer** | Browser automation (navigate, click, screenshot). | Community / Chrome DevTools MCP |
+| **MCP Resources** | Read-only data via `resources/list` and `resources/read` (e.g. file contents, doc by URI). Engram exposes tools only, no MCP resources. | Spec: [Resources](https://modelcontextprotocol.io/specification/2025-11-25/server/resources) |
+| **Full MCP Prompts** | `prompts/list` and `prompts/get` with arguments. We have a pseudo-prompt tool; not the full prompts API. | Spec: [Prompts](https://modelcontextprotocol.io/specification/2025-11-25/server/prompts) |
+
+**Registries to browse:** [MCP Registry](https://registry.modelcontextprotocol.io), [MCPMarket](https://mcpmarket.com/server), [MCPDirectory.ai](https://mcpdirectory.ai), [mcpserver.cc](https://mcpserver.cc).
+
+### Which we should add (recommendation)
+
+| Priority | Add | Why | Effort |
+|----------|-----|-----|--------|
+| **1** | **Fetch** | One tool: fetch URL → text/markdown. Lets the agent pull docs, API specs, or a link the user pasted, then e.g. `store_web_research`. No extra MCP needed. | Low (1 tool, httpx + HTML→text or markdown) |
+| **2** | **Time** | One tool: current time and/or timezone (e.g. "UTC now", "time in Tokyo"). Useful for session/outcome timestamps and "when did this happen" in reasoning. | Low (1 tool, `datetime` + optional `zoneinfo`) |
+| **3** | **Git (read-only)** | 2–3 tools: e.g. `git_status` (branch, dirty files), `git_log` (recent commits), optional `git_diff`. Fits coding context: "what changed?", "which branch?". Cursor has Git in IDE but agent-explicit tools still help. | Medium (subprocess or GitPython, path from cwd or argument) |
+| **4** | **MCP Resources** | Expose playbooks/skills as `resources/list` and `resources/read` (e.g. `engram://playbook/xyz`). Clients that support resources can load them without a tool call. | Medium (implement resources API in server) |
+| **Later** | **Brave Search** | Only if you want built-in web search inside Engram (one tool + API key). Otherwise user can use Cursor search or another MCP. | Low–medium |
+| **Don’t add** | Filesystem | IDE already has file access; duplicate and security surface. | — |
+| **Don’t add** | Sequential thinking | Different abstraction (reasoning server); we have store_ai_reasoning. | — |
+| **Don’t add** | PostgreSQL / SQL | Different product (data/analytics); Engram is coding + memory. | — |
+| **Don’t add** | Slack / Google / K8s / Browser | Full integrations; run as **separate MCPs** if needed, don’t bundle into Engram. | — |
+
+**Suggested order:** Add **Fetch** and **Time** first (small, high leverage). Then **Git read-only** for coding context. **MCP Resources** when you want playbooks/skills consumable as resources.
+
+---
+
 ## Which we can apply well — estimated return
 
 | Idea | Apply well? | Effort | Estimated return |

@@ -1,0 +1,10 @@
+---
+description: Backend wiring, DB access, config paths, startup. Apply when modifying backend startup, config, database, or data paths.
+alwaysApply: false
+---
+
+# Project wiring (backend / data)
+
+- **DB:** `from database import get_database` then `db = get_database()`; use `db.users`, `db.llm_settings`, etc. (async: `find_one`, `insert_one`, `update_one`).
+- **Data paths:** Use constants from `backend/config.py` (e.g. `DATA_DIR`, `CHROMA_MESSAGES_DIR`, `MCP_KNOWLEDGE_DB`). Never hardcode `Path(__file__).parent / "data"`.
+- **Full wiring:** `.windsurf/rules/FEATURES.md`. **MCP config:** `.cursor/mcp.json`.

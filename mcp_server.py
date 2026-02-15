@@ -1153,6 +1153,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                         "type": e.entity_type.value,
                         "name": e.name,
                         "signature": e.signature,
+                        "docstring": getattr(e, "docstring", "") or "",
                         "line": e.line_number,
                         "parent": e.parent,
                         "dependencies": e.dependencies
@@ -1179,7 +1180,8 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 "suggested_search_terms": plan.search_queries,
                 "max_results": plan.max_results
             }
-            
+            if plan.confidence < 0.5:
+                result["note"] = "Low confidence in complexity; consider a broader query or get_smart_context for task-specific guidance."
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
         
         elif name == "summarize_code":
@@ -1198,7 +1200,13 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 user_id = arguments.get("user_id", "windsurf")
                 results = graph.search_by_query(query, user_id, limit=10)
                 formatted = graph.format_context_for_prompt(results)
-                return [TextContent(type="text", text=formatted if formatted else "No results found")]
+                if not formatted:
+                    return [TextContent(type="text", text=json.dumps({
+                        "results": [], "count": 0,
+                        "message": "No results found.",
+                        "hint": "Try broader keywords or store_solution to add problem-solution pairs."
+                    }, indent=2))]
+                return [TextContent(type="text", text=formatted)]
             
             # Fallback to SQLite database
             from mcp_knowledge_db import get_mcp_knowledge_db
@@ -1216,7 +1224,11 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     result += f"**Technologies:** {', '.join(sol.get('technologies', []))}\n\n"
                 return [TextContent(type="text", text=result)]
             
-            return [TextContent(type="text", text="No matching solutions found in knowledge base.")]
+            return [TextContent(type="text", text=json.dumps({
+                "results": [], "count": 0,
+                "message": "No matching solutions found in knowledge base.",
+                "hint": "Try broader keywords or store_solution to add problem-solution pairs."
+            }, indent=2))]
         
         elif name == "search_memories":
             # Try ChromaDB first, fallback to SQLite
@@ -1248,6 +1260,9 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     "count": len(memories),
                     "source": "sqlite"
                 }
+                if len(memories) == 0:
+                    result["message"] = "No memories match this query."
+                    result["hint"] = "Use store_memory to add context for future retrieval."
                 return [TextContent(type="text", text=json.dumps(result, indent=2))]
             
             # ChromaDB returns objects
@@ -1263,7 +1278,9 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 "count": len(memories),
                 "source": "chromadb"
             }
-            
+            if len(memories) == 0:
+                result["message"] = "No memories match this query."
+                result["hint"] = "Use store_memory to add context for future retrieval."
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
         
         elif name == "get_retrieval_strategy":
@@ -1279,7 +1296,8 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 "complexity": plan.complexity.value,
                 "reasoning": plan.reasoning
             }
-            
+            if not retrieval.should_retrieve(plan):
+                result["hint"] = "Retrieval not recommended for this query; use get_smart_context if you need task context."
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
         
         # WRITE TOOLS
@@ -1779,7 +1797,8 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 "skill_id": skill_id,
                 "outcome": "success" if successful else "failure",
                 "new_confidence": round(new_confidence, 2),
-                "source": source
+                "source": source,
+                "next": "Skill confidence is updated; find_skill will rank it differently next time."
             }, indent=2))]
         
         # SESSION CONTINUITY HANDLERS
@@ -1859,11 +1878,11 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     })
                 source = "sqlite"
             
-            return [TextContent(type="text", text=json.dumps({
-                "sessions": sessions,
-                "count": len(sessions),
-                "source": source
-            }, indent=2))]
+            payload = {"sessions": sessions, "count": len(sessions), "source": source}
+            if len(sessions) == 0:
+                payload["message"] = "No resumable sessions."
+                payload["hint"] = "Use create_session to start a multi-step task."
+            return [TextContent(type="text", text=json.dumps(payload, indent=2))]
         
         elif name == "resume_session":
             session_id = arguments.get("session_id", "")
@@ -1895,8 +1914,10 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             if not session:
                 return [TextContent(type="text", text=json.dumps({
                     "success": False,
-                    "error": f"Session {session_id} not found"
-                }))]
+                    "error": f"Session {session_id} not found",
+                    "message": "Session not found.",
+                    "hint": "Use get_resumable_sessions to list valid session IDs."
+                }, indent=2))]
             
             # Build resumption context
             steps = session["plan_steps"]
@@ -1960,8 +1981,10 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             if not session:
                 return [TextContent(type="text", text=json.dumps({
                     "success": False,
-                    "error": f"Session {session_id} not found"
-                }))]
+                    "error": f"Session {session_id} not found",
+                    "message": "Session not found.",
+                    "hint": "Use get_resumable_sessions to list valid session IDs."
+                }, indent=2))]
             
             updates = []
             update_dict = {}
@@ -2151,7 +2174,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 except Exception as e:
                     logger.debug(f"Auto-playbook generation failed: {e}")
             
-            return [TextContent(type="text", text=json.dumps({
+            payload = {
                 "success": True,
                 "outcome_id": outcome_id,
                 "recorded": outcome_type,
@@ -2159,7 +2182,9 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 "patterns_ready": len(patterns_ready),
                 "auto_playbook_id": auto_playbook_id,
                 "source": source
-            }, indent=2))]
+            }
+            payload["next"] = "Playbooks may be auto-generated when similar outcomes repeat."
+            return [TextContent(type="text", text=json.dumps(payload, indent=2))]
         
         elif name == "get_insights":
             reflection = get_reflection_system()
@@ -2263,7 +2288,9 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             db = get_mcp_knowledge_db()
             stats = db.get_outcome_stats()
             stats["source"] = "sqlite"
-            
+            if stats.get("total_outcomes", 0) == 0:
+                stats["message"] = "No outcomes recorded yet."
+                stats["hint"] = "Use record_outcome after completing tasks to see success rates and insights."
             return [TextContent(type="text", text=json.dumps(stats, indent=2))]
         
         # ADVANCED FEATURES HANDLERS
@@ -2429,11 +2456,10 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 
                 scored.sort(key=lambda x: -x["relevance"])
             
-            return [TextContent(type="text", text=json.dumps({
-                "related_sessions": scored[:5],
-                "count": len(scored[:5]),
-                "source": "sqlite"
-            }, indent=2))]
+            payload = {"related_sessions": scored[:5], "count": len(scored[:5]), "source": "sqlite"}
+            if len(scored) == 0:
+                payload["message"] = "No related sessions found."
+            return [TextContent(type="text", text=json.dumps(payload, indent=2))]
         
         elif name == "get_experiment_stats":
             try:
@@ -2469,11 +2495,11 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                             "confidence": round(s["confidence"], 2)
                         })
                 
-                return [TextContent(type="text", text=json.dumps({
-                    "experiments": experiments,
-                    "count": len(experiments),
-                    "source": "sqlite"
-                }, indent=2))]
+                payload = {"experiments": experiments, "count": len(experiments), "source": "sqlite"}
+                if len(experiments) == 0:
+                    payload["message"] = "No experiment data yet."
+                    payload["hint"] = "Skill A/B stats appear after record_skill_outcome is used."
+                return [TextContent(type="text", text=json.dumps(payload, indent=2))]
         
         elif name == "get_auto_learning_status":
             try:
@@ -2493,7 +2519,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 patterns = db.get_patterns_ready_for_skill(min_occurrences=3)
                 stats = db.get_outcome_stats()
                 
-                return [TextContent(type="text", text=json.dumps({
+                payload = {
                     "auto_learning_active": True,
                     "patterns_detected": len(patterns),
                     "patterns_ready_for_skills": [
@@ -2503,7 +2529,11 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     "total_outcomes_tracked": stats.get("total_outcomes", 0),
                     "threshold_for_skill_generation": 3,
                     "source": "sqlite"
-                }, indent=2))]
+                }
+                if len(patterns) == 0 and stats.get("total_outcomes", 0) == 0:
+                    payload["message"] = "No patterns ready for auto-skills yet."
+                    payload["hint"] = "Record 3+ successful outcomes for similar problems to trigger skill generation."
+                return [TextContent(type="text", text=json.dumps(payload, indent=2))]
         
         # 3-DATABASE SYSTEM HANDLERS
         elif name == "store_user_interaction":
@@ -2592,10 +2622,11 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     "lessons": r.get("lessons_learned", [])[:3]
                 })
             
-            return [TextContent(type="text", text=json.dumps({
-                "results": formatted,
-                "count": len(formatted)
-            }, indent=2))]
+            payload = {"results": formatted, "count": len(formatted)}
+            if len(formatted) == 0:
+                payload["message"] = "No past reasoning found."
+                payload["hint"] = "Use store_ai_reasoning when solving problems to build this database."
+            return [TextContent(type="text", text=json.dumps(payload, indent=2))]
         
         elif name == "search_user_history":
             from mcp_databases import get_user_interactions_db, SearchMode
@@ -2620,10 +2651,11 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     "resolution": r.get("resolution_summary", "")[:200] if r.get("resolution_summary") else None
                 })
             
-            return [TextContent(type="text", text=json.dumps({
-                "results": formatted,
-                "count": len(formatted)
-            }, indent=2))]
+            payload = {"results": formatted, "count": len(formatted)}
+            if len(formatted) == 0:
+                payload["message"] = "No matching user history."
+                payload["hint"] = "Interactions are auto-logged; try a different query or broader terms."
+            return [TextContent(type="text", text=json.dumps(payload, indent=2))]
         
         elif name == "search_all_context":
             from mcp_databases import get_unified_search
@@ -2646,7 +2678,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             # Get formatted context
             context = search.find_relevant_context(arguments.get("query", ""))
             
-            return [TextContent(type="text", text=json.dumps({
+            payload = {
                 "summary": summary,
                 "context": context,
                 "raw_results": {
@@ -2663,7 +2695,11 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                         for s in results.get("skills", [])[:3]
                     ]
                 }
-            }, indent=2))]
+            }
+            if sum(summary.values()) == 0:
+                payload["message"] = "No context found across any source."
+                payload["hint"] = "Record outcomes and store solutions to build retrievable context."
+            return [TextContent(type="text", text=json.dumps(payload, indent=2))]
         
         elif name == "get_db_stats":
             from mcp_databases import get_user_interactions_db, get_ai_reasoning_db
@@ -2675,7 +2711,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             
             return [TextContent(type="text", text=json.dumps({
                 "databases": {
-                    "1_mongodb_chat": "Original chat app (separate)",
+                    "note": "Main app uses SQLite (data/app.db). MCP uses the 3 DBs below.",
                     "2_user_interactions": user_db.get_stats(),
                     "3_ai_reasoning": ai_db.get_stats(),
                     "4_knowledge": knowledge_db.get_stats()
@@ -2789,6 +2825,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     "This may need a smart model session. "
                     "If you proceed, call record_outcome when done so a playbook can be generated."
                 )
+                context["message"] = "No playbooks, skills, or solutions found for this task."
             
             # Deduplicate guardrails
             context["guardrails"] = list(set(context["guardrails"]))
@@ -2924,7 +2961,8 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 "outcome": "success" if successful else "failure",
                 "new_confidence": new_confidence,
                 "times_used": times_used,
-                "message": "Playbook outcome recorded. This helps improve playbook quality over time."
+                "message": "Playbook outcome recorded. This helps improve playbook quality over time.",
+                "next": "This feedback improves playbook ranking for future get_smart_context calls."
             }, indent=2))]
         
         elif name == "store_web_research":

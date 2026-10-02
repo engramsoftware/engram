@@ -11,6 +11,7 @@ import {
   ChevronRight, X, RefreshCw, Database, Link2, Tag
 } from 'lucide-react'
 import { graphApi } from '../../services/api'
+import { useUIStore } from '../../stores/uiStore'
 
 // ============================================================
 // Types
@@ -206,9 +207,13 @@ export default function KnowledgeGraphTab() {
           <GitBranch size={32} className="text-dark-text-secondary mx-auto mb-3" />
           <h2 className="text-lg font-medium text-dark-text-primary mb-2">Knowledge Graph Unavailable</h2>
           <p className="text-sm text-dark-text-secondary">{error}</p>
-          <p className="text-xs text-dark-text-secondary mt-2">
-            Configure Neo4j in Settings → Knowledge Graph
-          </p>
+          <button
+            type="button"
+            onClick={() => useUIStore.getState().openSettings('search')}
+            className="mt-3 text-xs text-dark-accent-primary hover:underline focus:outline-none focus-visible:underline"
+          >
+            Set up Neo4j in Settings → Search &amp; Graph
+          </button>
         </div>
       </div>
     )

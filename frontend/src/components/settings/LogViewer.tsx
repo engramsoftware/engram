@@ -21,6 +21,8 @@ interface LogEntry {
   level: string
   logger: string
   message: string
+  /** Client-only marker row: the stream was off, so entries may be missing here */
+  gap?: boolean
 }
 
 // ============================================================
@@ -62,7 +64,11 @@ function shortenLogger(name: string): string {
 // Component
 // ============================================================
 
-export default function LogViewer() {
+/**
+ * `active` is false while the viewer is off screen. It stays mounted so pause,
+ * filters and a cleared view survive, but it neither fetches nor streams.
+ */
+export default function LogViewer({ active = true }: { active?: boolean }) {
   const [logs, setLogs] = useState<LogEntry[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [isPaused, setIsPaused] = useState(false)
@@ -74,6 +80,9 @@ export default function LogViewer() {
   const [autoScroll, setAutoScroll] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
+  // Set while the stream is off (paused or hidden) after having run: resuming leaves a gap
+  const stoppedRef = useRef(false)
+  const streamedRef = useRef(false)
   const { token } = useAuthStore()
 
   useEffect(() => {
@@ -113,21 +122,34 @@ export default function LogViewer() {
     }
   }, [levelFilter, debouncedSearch])
 
-  // Initial load
+  // Load when shown and whenever the filters change; nothing is fetched while hidden.
+  // Re-showing the viewer keeps what is on screen (a "resumed" marker shows the gap).
+  const fetchedRef = useRef<typeof fetchLogs | null>(null)
   useEffect(() => {
+    if (!active || fetchedRef.current === fetchLogs) return
+    fetchedRef.current = fetchLogs
     fetchLogs()
-  }, [fetchLogs])
+  }, [active, fetchLogs])
 
   // SSE streaming for real-time logs
   useEffect(() => {
-    if (isPaused) {
-      // Close existing connection when paused
+    if (isPaused || !active) {
+      // Close existing connection when paused or hidden
       if (eventSourceRef.current) {
         eventSourceRef.current.close()
         eventSourceRef.current = null
       }
+      if (streamedRef.current) stoppedRef.current = true
       return
     }
+
+    // The stream only sends new entries, so mark where some may be missing
+    if (stoppedRef.current) {
+      setLogs(prev => prev.length === 0 || prev[prev.length - 1].gap ? prev
+        : [...prev, { timestamp: Date.now() / 1000, level: 'INFO', logger: '', message: '', gap: true }])
+      stoppedRef.current = false
+    }
+    streamedRef.current = true
 
     const params = new URLSearchParams()
     if (levelFilter) params.append('level', levelFilter)
@@ -164,18 +186,19 @@ export default function LogViewer() {
       es.close()
       eventSourceRef.current = null
     }
-  }, [isPaused, levelFilter, debouncedSearch, token])
+  }, [active, isPaused, levelFilter, debouncedSearch, token])
 
   const clearLogs = () => setLogs([])
 
   // Count by level for the filter badges
   const levelCounts: Record<string, number> = {}
   for (const log of logs) {
-    levelCounts[log.level] = (levelCounts[log.level] || 0) + 1
+    if (!log.gap) levelCounts[log.level] = (levelCounts[log.level] || 0) + 1
   }
+  const entryCount = logs.filter(l => !l.gap).length
 
   return (
-    <div className="flex flex-col rounded-lg border border-dark-border bg-dark-bg-secondary overflow-hidden"
+    <div className="relative flex flex-col rounded-lg border border-dark-border bg-dark-bg-secondary overflow-hidden"
          style={{ height: '500px' }}>
       {/* Toolbar */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-dark-border/50 bg-dark-bg-secondary flex-shrink-0 flex-wrap">
@@ -262,7 +285,7 @@ export default function LogViewer() {
               Live
             </span>
           )}
-          <span>{logs.length} entries</span>
+          <span>{entryCount} entries</span>
         </div>
       </div>
 
@@ -282,11 +305,19 @@ export default function LogViewer() {
           </div>
         ) : (
           logs.map((entry, i) => {
+            if (entry.gap) {
+              return (
+                <div key={`gap-${entry.timestamp}-${i}`} role="note"
+                     className="px-3 py-1 my-0.5 text-center text-dark-text-secondary font-sans text-[10px] border-y border-dashed border-dark-border/60">
+                  Resumed. Entries logged while paused or hidden aren't shown; Refresh reloads them.
+                </div>
+              )
+            }
             const style = LEVEL_STYLES[entry.level] || LEVEL_STYLES.INFO
             return (
               <div
                 key={`${entry.timestamp}-${i}`}
-                className={`flex gap-0 px-3 py-0.5 hover:bg-dark-bg-primary/50 border-l-2 ${
+                className={`flex flex-wrap sm:flex-nowrap gap-0 px-3 py-0.5 hover:bg-dark-bg-primary/50 border-l-2 ${
                   entry.level === 'ERROR' || entry.level === 'CRITICAL'
                     ? 'border-l-red-500/50'
                     : entry.level === 'WARNING'
@@ -308,7 +339,7 @@ export default function LogViewer() {
                   {shortenLogger(entry.logger)}
                 </span>
                 {/* Message */}
-                <span className="text-dark-text-primary/80 break-all flex-1 ml-1">
+                <span className="text-dark-text-primary/80 break-words [overflow-wrap:anywhere] basis-full sm:basis-auto flex-1 min-w-0 sm:ml-1">
                   {entry.message.replace(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2},\d{3} - \S+ - \S+ - /, '')}
                 </span>
               </div>

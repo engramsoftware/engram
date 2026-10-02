@@ -26,7 +26,9 @@ export default function Neo4jSettings({ config, onUpdate }: Props) {
   const [password, setPassword] = useState('')
   const [database, setDatabase] = useState(config?.database || 'neo4j')
   const [saveState, runSave] = useAction()
-  const [testState, runTest] = useAction()
+  const [testState, runTest, resetTest] = useAction({ sticky: true })
+  // A test result describes the values it was run with; editing them clears it
+  useEffect(() => { resetTest() }, [uri, username, password, database, resetTest])
   const [toggleState, runToggle] = useAction()
 
   // One value per effect, so a refresh only resets a field whose saved value changed

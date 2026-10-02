@@ -10,6 +10,7 @@ import { ChevronDown, Loader2 } from 'lucide-react'
 import { settingsApi, conversationsApi } from '../../services/api'
 import { useChatStore } from '../../stores/chatStore'
 import { friendlyModelName } from '../../utils/modelNames'
+import { newChatProvider } from '../../utils/providers'
 import type { LLMSettings } from '../../types/chat.types'
 
 /** Friendly display names for provider keys */
@@ -54,48 +55,45 @@ export default function ModelSelector() {
     }
   }, [isOpen])
 
-  // Fetch settings on mount — find the single active provider
+  // Fetch settings on mount
   useEffect(() => {
-    async function fetchSettings() {
-      try {
-        const data = await settingsApi.getLLMSettings()
-        setSettings(data)
-        // Only one provider can be active at a time
-        const enabled = data.available_providers.filter(
-          (p: string) => data.providers[p]?.enabled
-        )
-        const provider = enabled[0] || data.default_provider || ''
-        setActiveProvider(provider)
-        // Use saved default model, or first available for the provider
-        const defaultModel = data.default_model
-          || data.providers[provider]?.available_models?.[0]
-          || ''
-        setSelectedModel(defaultModel)
-      } catch (error) {
-        console.error('Failed to fetch settings:', error)
-      }
-    }
-    fetchSettings()
+    settingsApi.getLLMSettings()
+      .then(setSettings)
+      .catch(error => console.error('Failed to fetch settings:', error))
   }, [])
 
-  // Load conversation's saved model when switching conversations
+  // Show what this chat will use, resolved like the chat backend: the conversation's
+  // own provider/model when it has one, otherwise the new-chat default. Re-run on every
+  // conversation switch so one chat's choice doesn't linger on the next.
   useEffect(() => {
-    if (!activeConversationId || !settings) return
-    
-    async function loadConversationModel() {
-      try {
-        const conv = await conversationsApi.get(activeConversationId!)
-        if (conv.model_name) {
-          setSelectedModel(conv.model_name)
-        }
-        if (conv.model_provider) {
-          setActiveProvider(conv.model_provider)
-        }
-      } catch (error) {
-        console.error('Failed to load conversation model:', error)
-      }
+    if (!settings) return
+    const fallbackProvider = newChatProvider(settings) || ''
+    const defaultsFor = (provider: string) => (provider === settings.default_provider && settings.default_model)
+      || settings.providers[provider]?.available_models?.[0] || ''
+    const showDefaults = () => {
+      setActiveProvider(fallbackProvider)
+      setSelectedModel(settings.default_model || defaultsFor(fallbackProvider))
     }
-    loadConversationModel()
+    if (!activeConversationId) { showDefaults(); return }
+
+    let cancelled = false
+    conversationsApi.get(activeConversationId)
+      .then(conv => {
+        if (cancelled) return
+        // Unknown providers (e.g. "chatgpt-import" on imported chats) can't list models;
+        // show the default provider so a pick re-pins the chat to a working one
+        if (conv.model_provider && settings.available_providers.includes(conv.model_provider)) {
+          setActiveProvider(conv.model_provider)
+          setSelectedModel(conv.model_name || defaultsFor(conv.model_provider))
+        } else {
+          showDefaults()
+        }
+      })
+      .catch(error => {
+        console.error('Failed to load conversation model:', error)
+        if (!cancelled) showDefaults()
+      })
+    return () => { cancelled = true }
   }, [activeConversationId, settings])
 
   // Load models when active provider changes: show cached instantly, refresh in background

@@ -28,7 +28,7 @@ export default function EmailSettings({ config, onUpdate }: Props) {
   const [recipient, setRecipient] = useState(config?.recipient || '')
   const [fromName, setFromName] = useState(config?.from_name || 'Engram')
   const [saveState, runSave] = useAction()
-  const [testState, runTest] = useAction()
+  const [testState, runTest] = useAction({ sticky: true })
   const [toggleState, runToggle] = useAction()
 
   // One value per effect, so a refresh only resets a field whose saved value changed

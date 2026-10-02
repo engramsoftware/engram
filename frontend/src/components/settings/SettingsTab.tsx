@@ -24,6 +24,7 @@ import LoggingSettings from './LoggingSettings'
 import LogViewer from './LogViewer'
 import AddinSettingsRenderer from './AddinSettingsRenderer'
 import { ActionButton, ActionStatus, Badge, SettingsCard, useAction } from './primitives'
+import { newChatProvider } from '../../utils/providers'
 
 /** Providers that run locally and don't need an API key */
 const LOCAL_PROVIDERS = new Set(['lmstudio', 'ollama'])
@@ -47,6 +48,8 @@ export default function SettingsTab() {
   const [settings, setSettings] = useState<LLMSettings | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
+  const [retrying, setRetrying] = useState(false)
+  const [loggingOpen, setLoggingOpen] = useState(false)
   const { settingsSection, setSettingsSection } = useUIStore()
   const section = SECTIONS.some(s => s.id === settingsSection) ? settingsSection : 'models'
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
@@ -65,6 +68,12 @@ export default function SettingsTab() {
   const load = () => {
     setIsLoading(true)
     refreshSettings().finally(() => setIsLoading(false))
+  }
+
+  // Retry in place: the full-page spinner would unmount the panels and lose drafts
+  const retry = () => {
+    setRetrying(true)
+    refreshSettings().finally(() => setRetrying(false))
   }
 
   useEffect(load, [])
@@ -98,19 +107,12 @@ export default function SettingsTab() {
     )
   }
 
-  if (loadError && !settings) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center gap-3 px-4 text-center">
-        <p className="text-sm text-dark-text-secondary">Couldn't load your settings.</p>
-        <ActionButton onClick={load}>Retry</ActionButton>
-      </div>
-    )
-  }
-
   const providers = settings?.available_providers || []
   const cloudProviders = providers.filter(p => !LOCAL_PROVIDERS.has(p))
   const localProviders = providers.filter(p => LOCAL_PROVIDERS.has(p))
-  const activeProvider = providers.find(p => settings?.providers[p]?.enabled) || null
+  const anyProviderEnabled = providers.some(p => settings?.providers[p]?.enabled)
+  // Same order as the chat backend, so the header names the provider chat really uses
+  const activeProvider = newChatProvider(settings)
   const enabledAddins = addins.filter(a => a.enabled).length
 
   const providerGroup = (label: string, icon: ReactNode, list: string[]) => list.length > 0 && (
@@ -133,31 +135,49 @@ export default function SettingsTab() {
     </div>
   )
 
+  // Sections backed by GET /settings/llm. After a failed load they show only the
+  // error (their forms would otherwise save defaults over the real values); after a
+  // failed refresh they keep the last values under a warning. Add-ins and System
+  // don't use this request and keep working either way.
+  const needsSettings = (body: ReactNode) => !loadError ? body : (
+    <div className="space-y-3">
+      <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-500/30
+                                   bg-red-500/10 px-4 py-3 text-xs text-red-400 [.light_&]:text-red-700">
+        <span>{settings
+          ? "Couldn't refresh your settings, so what you see may be out of date."
+          : "Couldn't load your settings."}</span>
+        <ActionButton onClick={retry} busy={retrying}>Retry</ActionButton>
+      </div>
+      {settings && body}
+    </div>
+  )
+
   const panels: Record<string, ReactNode> = {
-    models: (
+    models: needsSettings(
       <div className="space-y-5">
-        {!activeProvider && (
+        {!anyProviderEnabled && (
           <p className="text-xs text-dark-text-secondary">No provider is enabled yet. Turn one on to start chatting.</p>
         )}
         {providerGroup('Cloud API', <Cloud size={12} />, cloudProviders)}
         {providerGroup('Local', <Monitor size={12} />, localProviders)}
       </div>
     ),
-    search: (
+    search: needsSettings(
       <div className="space-y-3">
         <BraveSearchSettings config={settings?.brave_search} onUpdate={refreshSettings} />
         <Neo4jSettings config={settings?.neo4j} onUpdate={refreshSettings} />
       </div>
     ),
-    email: <EmailSettings config={settings?.email} onUpdate={refreshSettings} />,
-    performance: <OptimizationSettings config={settings?.optimization} onUpdate={refreshSettings} />,
+    email: needsSettings(<EmailSettings config={settings?.email} onUpdate={refreshSettings} />),
+    performance: needsSettings(<OptimizationSettings config={settings?.optimization} onUpdate={refreshSettings} />),
     addins: <AddinsSettings addins={addins} onRefresh={fetchAddins} />,
     system: (
       <div className="space-y-3">
-        <SettingsCard title="Logging" subtitle="Log levels and live log viewer" icon={<ScrollText size={14} />}>
-          <LoggingSettings />
-          {/* Only stream logs while this section is on screen */}
-          {section === 'system' && <LogViewer />}
+        <SettingsCard title="Logging" subtitle="Log levels and live log viewer" icon={<ScrollText size={14} />}
+                      open={loggingOpen} onOpenChange={setLoggingOpen} keepMounted>
+          {loggingOpen && <LoggingSettings />}
+          {/* Stays mounted so pause and filters survive; it only fetches and streams while on screen */}
+          <LogViewer active={section === 'system' && loggingOpen} />
         </SettingsCard>
         <SettingsCard title="Data management" subtitle="Import and export your data" icon={<Database size={14} />} defaultOpen>
           <DataManagement />
@@ -177,7 +197,7 @@ export default function SettingsTab() {
           <div>
             <h1 className="text-xl font-semibold text-dark-text-primary">Settings</h1>
             <p className="text-sm text-dark-text-secondary">
-              {activeProvider
+              {!settings ? null : activeProvider
                 ? <>LLM: <span className="text-dark-text-primary font-medium">{PROVIDER_DISPLAY[activeProvider] || activeProvider}</span></>
                 : 'No LLM provider active'
               }

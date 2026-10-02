@@ -341,6 +341,10 @@ Both run the same retrieval and outlet pipeline.
 
 On first start, Engram auto-generates secure JWT and encryption keys. No manual setup needed.
 
+In Docker they are saved in `data/.engram.env`, so rebuilding or updating the container keeps everyone signed in and saved API keys readable. Back that file up with the rest of `data/`. (Older images kept these keys inside the container, so a rebuild replaced them; if saved API keys show as missing after updating, enter them once more.) Without Docker, if `JWT_SECRET_KEY` isn't set, Engram generates one and keeps it in `data/.jwt_secret`.
+
+The container runs Engram as an unprivileged user (uid 10001). If your `data` folder is on a mount that ignores file ownership (some Windows/macOS setups), it falls back to root and logs a warning; a Docker volume avoids that. Run other commands in the container as the same user (`docker exec -u engram …`, as in `mcp_config.example.json`) so files they create stay writable by Engram; `reset_password.py` does this by itself.
+
 LLM provider API keys are configured through the **Settings** tab in the app. They are stored encrypted in the database, not in plain text.
 
 ### Environment Variables

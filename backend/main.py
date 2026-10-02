@@ -71,16 +71,36 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting up chat application...")
 
-    # Warn if JWT secret is still the default — critical security issue
+    # A published default JWT secret would let anyone forge a login (as an admin,
+    # too). Use a random one kept in the data folder instead; the only cost of a
+    # new one is signing everyone in again.
     _settings = get_settings()
     if _settings.jwt_secret_key in (
         "your-super-secret-key-change-in-production",
         "change-me-to-a-random-secret-key",
+        "change-me",
     ):
+        import secrets as _secrets
+        from config import DATA_DIR
+        _secret_file = DATA_DIR / ".jwt_secret"
+        try:
+            if not _secret_file.exists():
+                _secret_file.parent.mkdir(parents=True, exist_ok=True)
+                _secret_file.write_text(_secrets.token_hex(32))
+                _secret_file.chmod(0o600)
+            _settings.jwt_secret_key = _secret_file.read_text().strip()
+            logger.warning(f"JWT_SECRET_KEY isn't set; using a generated secret stored in {_secret_file}")
+        except OSError as e:
+            _settings.jwt_secret_key = _secrets.token_hex(32)
+            logger.warning(f"JWT_SECRET_KEY isn't set and {_secret_file} can't be saved ({e}); "
+                           "using a temporary secret, so everyone signs in again after a restart")
+
+    # The encryption key protects stored API keys; it can't be replaced
+    # automatically without making the saved keys unreadable, so only warn
+    if _settings.encryption_key in ("your-32-byte-encryption-key-here", "change-me-to-a-random-32-char-key"):
         logger.warning(
-            "⚠️  JWT_SECRET_KEY is still the default! "
-            "Generate a real secret: python -c \"import secrets; print(secrets.token_hex(32))\" "
-            "and set it in .env"
+            "⚠️  ENCRYPTION_KEY is still the default, so saved API keys are encrypted with a publicly "
+            "known key. Set ENCRYPTION_KEY in .env (you'll need to re-enter saved API keys once)."
         )
 
     # Log detected CORS origins so the user can verify LAN access

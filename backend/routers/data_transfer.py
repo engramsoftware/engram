@@ -44,8 +44,10 @@ def _extract_chatgpt_messages(conversation: dict) -> List[dict]:
     mapping = conversation.get("mapping", {})
     current_node = conversation.get("current_node")
     messages = []
+    seen = set()  # parent pointers come from the uploaded file; a cycle would loop forever
 
-    while current_node:
+    while current_node and current_node not in seen:
+        seen.add(current_node)
         node = mapping.get(current_node, {})
         msg = node.get("message") if node else None
 

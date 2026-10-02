@@ -276,7 +276,8 @@ Extensible plugin architecture with built-in plugins:
 - **Forgotten password.** An admin sets a new one in Settings › Users. If you're the only admin, run `docker exec -it engram python reset_password.py you@example.com` (add `--make-admin` to restore admin rights).
 - **API keys encrypted at rest** using Fernet symmetric encryption (AES-128-CBC).
 - **Rate limiting** on authentication endpoints to prevent brute force attacks.
-- **Security headers** (HSTS, X-Frame-Options, CSP) on all responses.
+- **Security headers** on all responses: X-Frame-Options, nosniff, Referrer-Policy and a baseline CSP (no plugins, no framing, no form posts elsewhere).
+- **Isolated previews and uploads.** HTML/SVG previews of model output run in a sandboxed iframe with its own origin, so they can't read your login. Uploaded files other than images and PDFs download instead of opening, and are served with a CSP sandbox.
 - **Input validation** on all user-facing endpoints.
 
 ---

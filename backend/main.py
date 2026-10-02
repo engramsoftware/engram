@@ -179,6 +179,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Baseline CSP. Scripts aren't restricted: the artifact preview is a srcdoc
+        # iframe, which inherits this policy, and runs model-written and CDN scripts
+        # (it is isolated by its sandbox instead). Uploads set their own policy.
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+        )
         # Cache static assets (JS/CSS) but not API responses
         if request.url.path.startswith("/assets/"):
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"

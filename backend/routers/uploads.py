@@ -72,6 +72,11 @@ ALLOWED_EXTENSIONS = {
 # Max file size: 20 MB
 MAX_FILE_SIZE = 20 * 1024 * 1024
 
+# Shown inline (in <img> tags and the browser's PDF viewer). Everything else is
+# served as a download, so an uploaded .html or .svg can't run scripts on
+# Engram's origin (where they could read the login token).
+INLINE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".pdf"}
+
 
 @router.post("")
 async def upload_file(
@@ -146,6 +151,9 @@ async def serve_file(filename: str) -> dict:
       1. PrivateNetworkMiddleware blocks all non-LAN/VPN IPs
       2. Filenames are UUID-based and unguessable
       3. Path traversal is prevented below
+      4. Only images and PDFs are shown inline; other types (HTML, SVG,
+         text…) download, and a CSP sandbox stops any of them running
+         scripts with Engram's origin
 
     Args:
         filename: The unique filename from the upload response.
@@ -170,4 +178,13 @@ async def serve_file(filename: str) -> dict:
     if not file_path.exists():
         raise HTTPException(status_code=404, detail="Image not found")
 
-    return FileResponse(file_path)
+    inline = file_path.suffix.lower() in INLINE_EXTENSIONS
+    response = FileResponse(
+        file_path,
+        filename=filename,
+        content_disposition_type="inline" if inline else "attachment",
+    )
+    # Chrome refuses to show a PDF under a CSP sandbox; PDFs run in the viewer's own sandbox
+    if file_path.suffix.lower() != ".pdf":
+        response.headers["Content-Security-Policy"] = "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'"
+    return response

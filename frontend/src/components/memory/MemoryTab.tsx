@@ -146,7 +146,7 @@ export default function MemoryTab() {
             placeholder="Search memories semantically..."
             className="w-full bg-dark-bg-secondary border border-dark-border rounded
                        pl-9 pr-3 py-2 text-sm text-dark-text-primary
-                       placeholder:text-dark-text-secondary/50"
+                       placeholder:text-dark-text-secondary/70"
           />
         </div>
         {searchActive ? (
@@ -187,7 +187,7 @@ export default function MemoryTab() {
           >
             {Icon && <Icon size={14} />}
             {label}
-            <span className={`text-xs ml-1 ${sourceFilter === key ? 'text-white/70' : 'text-dark-text-secondary/60'}`}>
+            <span className={`text-xs ml-1 ${sourceFilter === key ? 'text-white/70' : 'text-dark-text-secondary'}`}>
               {count}
             </span>
           </button>
@@ -279,7 +279,7 @@ export default function MemoryTab() {
                   {memory.memory_type}
                 </span>
                 {memory.confidence < 1.0 && (
-                  <span className="text-xs text-dark-text-secondary/60">
+                  <span className="text-xs text-dark-text-secondary">
                     {Math.round(memory.confidence * 100)}%
                   </span>
                 )}

@@ -361,7 +361,7 @@ function OverviewSection({ stats, skills }: { stats: DashboardData['stats']; ski
           Top Skills by Confidence
         </h3>
         {topSkills.length === 0 ? (
-          <p className="text-xs text-dark-text-secondary/50 italic">No skills yet</p>
+          <p className="text-xs text-dark-text-secondary italic">No skills yet</p>
         ) : (
           <div className="space-y-2">
             {topSkills.map(skill => (
@@ -424,7 +424,7 @@ function SkillsSection({ skills, expandedSkill, onToggleExpand, onDelete }: {
       </div>
 
       {filtered.length === 0 ? (
-        <p className="text-xs text-dark-text-secondary/50 italic py-4 text-center">
+        <p className="text-xs text-dark-text-secondary italic py-4 text-center">
           No skills match this filter
         </p>
       ) : (
@@ -459,7 +459,7 @@ function SkillsSection({ skills, expandedSkill, onToggleExpand, onDelete }: {
               {expandedSkill === skill.id && (
                 <div className="px-3 pb-3 pt-1 border-t border-dark-border/20 space-y-2">
                   <div>
-                    <span className="text-[10px] text-dark-text-secondary/60 uppercase">Strategy</span>
+                    <span className="text-[10px] text-dark-text-secondary uppercase">Strategy</span>
                     <p className="text-[11px] text-dark-text-primary mt-0.5">{skill.strategy}</p>
                   </div>
                   <div className="flex gap-4 text-[10px] text-dark-text-secondary">
@@ -471,7 +471,7 @@ function SkillsSection({ skills, expandedSkill, onToggleExpand, onDelete }: {
                   </div>
                   {skill.trigger_patterns.length > 0 && (
                     <div>
-                      <span className="text-[10px] text-dark-text-secondary/60 uppercase">Triggers</span>
+                      <span className="text-[10px] text-dark-text-secondary uppercase">Triggers</span>
                       <div className="flex flex-wrap gap-1 mt-0.5">
                         {skill.trigger_patterns.map((t, i) => (
                           <span key={i} className="text-[10px] bg-dark-bg-primary text-dark-text-secondary px-1.5 py-0.5 rounded">
@@ -520,9 +520,9 @@ function EvalsSection({ evaluations }: { evaluations: Evaluation[] }) {
   if (evaluations.length === 0) {
     return (
       <div className="text-center py-8">
-        <Target size={32} className="text-dark-text-secondary/30 mx-auto mb-2" />
-        <p className="text-xs text-dark-text-secondary/50">No evaluations yet</p>
-        <p className="text-[10px] text-dark-text-secondary/30 mt-1">
+        <Target size={32} className="text-dark-text-secondary mx-auto mb-2" />
+        <p className="text-xs text-dark-text-secondary">No evaluations yet</p>
+        <p className="text-[10px] text-dark-text-secondary mt-1">
           Evaluations appear after skills are applied to messages
         </p>
       </div>
@@ -546,13 +546,13 @@ function EvalsSection({ evaluations }: { evaluations: Evaluation[] }) {
             }`}>
               {ev.score.toFixed(1)}/5
             </span>
-            <span className="text-[10px] text-dark-text-secondary/40 ml-auto">
+            <span className="text-[10px] text-dark-text-secondary ml-auto">
               {new Date(ev.evaluated_at * 1000).toLocaleTimeString()}
             </span>
           </div>
           <p className="text-[10px] text-dark-text-secondary truncate">{ev.reasoning}</p>
           {ev.query_text && (
-            <p className="text-[10px] text-dark-text-secondary/40 truncate mt-0.5">
+            <p className="text-[10px] text-dark-text-secondary truncate mt-0.5">
               Query: {ev.query_text}
             </p>
           )}
@@ -590,8 +590,8 @@ function CurriculumSection({ results, running, onRun }: {
 
       {results === null ? (
         <div className="text-center py-8">
-          <BookOpen size={32} className="text-dark-text-secondary/30 mx-auto mb-2" />
-          <p className="text-xs text-dark-text-secondary/50">
+          <BookOpen size={32} className="text-dark-text-secondary mx-auto mb-2" />
+          <p className="text-xs text-dark-text-secondary">
             Click "Run Curriculum" to analyze skill gaps
           </p>
         </div>
@@ -620,7 +620,7 @@ function CurriculumSection({ results, running, onRun }: {
                 </span>
               </div>
               <p className="text-[10px] text-dark-text-secondary">{p.reason}</p>
-              <span className="text-[9px] text-dark-text-secondary/40 mt-1">
+              <span className="text-[9px] text-dark-text-secondary mt-1">
                 {TYPE_LABELS[p.skill_type] || p.skill_type}
               </span>
             </div>

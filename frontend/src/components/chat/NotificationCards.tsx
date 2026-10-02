@@ -28,10 +28,10 @@ export default function NotificationCards({ notifications }: Props) {
             key={i}
             className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs border ${
               isSent
-                ? 'bg-green-500/10 border-green-500/20 text-green-300'
+                ? 'bg-green-500/10 border-green-500/20 text-green-300 [.light_&]:text-green-700'
                 : isScheduled
-                  ? 'bg-blue-500/10 border-blue-500/20 text-blue-300'
-                  : 'bg-red-500/10 border-red-500/20 text-red-300'
+                  ? 'bg-blue-500/10 border-blue-500/20 text-blue-300 [.light_&]:text-blue-700'
+                  : 'bg-red-500/10 border-red-500/20 text-red-300 [.light_&]:text-red-700'
             }`}
           >
             {isSent && <Check size={14} className="flex-shrink-0" />}
@@ -39,7 +39,7 @@ export default function NotificationCards({ notifications }: Props) {
             {isFailed && <AlertTriangle size={14} className="flex-shrink-0" />}
             <Mail size={14} className="flex-shrink-0 opacity-60" />
             <span className="truncate font-medium">{notif.subject}</span>
-            <span className="ml-auto flex-shrink-0 opacity-70">
+            <span className="ml-auto flex-shrink-0 opacity-70 [.light_&]:opacity-100">
               {isSent && 'Sent'}
               {isScheduled && notif.scheduled_at && (
                 <>Scheduled for {new Date(notif.scheduled_at).toLocaleString(undefined, {

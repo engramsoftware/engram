@@ -278,9 +278,9 @@ export default function AddinsTab() {
 
         {addins.length === 0 && (
           <div className="text-center py-12">
-            <Puzzle size={40} className="mx-auto text-dark-text-secondary/40 mb-3" />
+            <Puzzle size={40} className="mx-auto text-dark-text-secondary mb-3" />
             <p className="text-dark-text-secondary">No add-ins installed</p>
-            <p className="text-xs text-dark-text-secondary/60 mt-1">Add-ins extend your AI with new capabilities</p>
+            <p className="text-xs text-dark-text-secondary mt-1">Add-ins extend your AI with new capabilities</p>
           </div>
         )}
       </div>

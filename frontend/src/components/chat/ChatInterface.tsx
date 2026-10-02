@@ -327,7 +327,7 @@ export default function ChatInterface() {
           onSend={handleSend}
           disabled={isStreaming}
         />
-        <p className="text-center text-[10px] text-dark-text-secondary/50 mt-1.5 sm:mt-2">
+        <p className="text-center text-[10px] text-dark-text-secondary mt-1.5 sm:mt-2">
           Engram can make mistakes. Verify important information.
         </p>
       </div>

@@ -95,7 +95,7 @@ export default function ForgotPasswordPage() {
               required
               placeholder="The email you registered with"
               className="w-full bg-dark-bg-secondary border border-dark-border rounded-lg
-                         px-4 py-2.5 text-dark-text-primary placeholder-dark-text-secondary/50
+                         px-4 py-2.5 text-dark-text-primary placeholder-dark-text-secondary/70
                          focus:outline-none focus:border-indigo-500 transition-colors"
             />
           </div>
@@ -112,7 +112,7 @@ export default function ForgotPasswordPage() {
               minLength={8}
               placeholder="At least 8 characters"
               className="w-full bg-dark-bg-secondary border border-dark-border rounded-lg
-                         px-4 py-2.5 text-dark-text-primary placeholder-dark-text-secondary/50
+                         px-4 py-2.5 text-dark-text-primary placeholder-dark-text-secondary/70
                          focus:outline-none focus:border-indigo-500 transition-colors"
             />
           </div>
@@ -129,7 +129,7 @@ export default function ForgotPasswordPage() {
               minLength={8}
               placeholder="Type it again"
               className="w-full bg-dark-bg-secondary border border-dark-border rounded-lg
-                         px-4 py-2.5 text-dark-text-primary placeholder-dark-text-secondary/50
+                         px-4 py-2.5 text-dark-text-primary placeholder-dark-text-secondary/70
                          focus:outline-none focus:border-indigo-500 transition-colors"
             />
           </div>

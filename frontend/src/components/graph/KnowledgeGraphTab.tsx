@@ -203,10 +203,10 @@ export default function KnowledgeGraphTab() {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center max-w-md px-6">
-          <GitBranch size={32} className="text-dark-text-secondary/30 mx-auto mb-3" />
+          <GitBranch size={32} className="text-dark-text-secondary mx-auto mb-3" />
           <h2 className="text-lg font-medium text-dark-text-primary mb-2">Knowledge Graph Unavailable</h2>
           <p className="text-sm text-dark-text-secondary">{error}</p>
-          <p className="text-xs text-dark-text-secondary/60 mt-2">
+          <p className="text-xs text-dark-text-secondary mt-2">
             Configure Neo4j in Settings → Knowledge Graph
           </p>
         </div>
@@ -288,7 +288,7 @@ export default function KnowledgeGraphTab() {
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search entities..."
             className="w-full pl-9 pr-4 py-2 bg-dark-bg-secondary border border-dark-border rounded-lg
-                       text-sm text-dark-text-primary placeholder:text-dark-text-secondary/40
+                       text-sm text-dark-text-primary placeholder:text-dark-text-secondary/70
                        focus:outline-none focus:border-dark-accent-primary/50 transition-colors"
           />
           {isLoadingNodes && (
@@ -301,7 +301,7 @@ export default function KnowledgeGraphTab() {
           {/* Node list */}
           <div className={`space-y-1 ${selectedNode ? 'w-1/2' : 'w-full'} transition-all`}>
             {nodes.length === 0 && !isLoadingNodes && (
-              <p className="text-sm text-dark-text-secondary/60 italic py-4 text-center">
+              <p className="text-sm text-dark-text-secondary italic py-4 text-center">
                 {searchQuery || typeFilter ? 'No matching entities found' : 'No entities in the graph yet'}
               </p>
             )}
@@ -329,13 +329,13 @@ export default function KnowledgeGraphTab() {
                     {node.node_type.replace(/_/g, ' ')}
                   </span>
                   {node.connection_count > 0 && (
-                    <span className="text-[10px] text-dark-text-secondary/50 flex-shrink-0">
+                    <span className="text-[10px] text-dark-text-secondary flex-shrink-0">
                       {node.connection_count} conn
                     </span>
                   )}
                 </div>
                 <div className="flex items-center gap-3 mt-1 ml-5">
-                  <span className="text-[10px] text-dark-text-secondary/50">
+                  <span className="text-[10px] text-dark-text-secondary">
                     Last seen: {formatDate(node.last_seen)}
                   </span>
                 </div>
@@ -363,11 +363,11 @@ export default function KnowledgeGraphTab() {
                           <span className={`text-[10px] px-1.5 py-0.5 rounded border ${typeColor(neighborhood.center.node_type)}`}>
                             {neighborhood.center.node_type.replace(/_/g, ' ')}
                           </span>
-                          <span className="text-[10px] text-dark-text-secondary/50">
+                          <span className="text-[10px] text-dark-text-secondary">
                             {neighborhood.center.connection_count} connections
                           </span>
                         </div>
-                        <div className="text-[10px] text-dark-text-secondary/50 mt-1">
+                        <div className="text-[10px] text-dark-text-secondary mt-1">
                           Created: {formatDate(neighborhood.center.created_at)} · Last seen: {formatDate(neighborhood.center.last_seen)}
                         </div>
                       </div>
@@ -425,10 +425,10 @@ export default function KnowledgeGraphTab() {
                               >
                                 {edge.from_node}
                               </button>
-                              <span className="text-[10px] text-dark-text-secondary/60 bg-dark-bg-secondary px-1.5 py-0.5 rounded flex-shrink-0">
+                              <span className="text-[10px] text-dark-text-secondary bg-dark-bg-secondary px-1.5 py-0.5 rounded flex-shrink-0">
                                 {edge.rel_type}
                               </span>
-                              <ArrowRight size={10} className="text-dark-text-secondary/30 flex-shrink-0" />
+                              <ArrowRight size={10} className="text-dark-text-secondary flex-shrink-0" />
                               <button
                                 onClick={() => handleSelectNode(edge.to_node)}
                                 className={`truncate hover:text-dark-accent-primary transition-colors ${
@@ -439,7 +439,7 @@ export default function KnowledgeGraphTab() {
                               </button>
                               <button
                                 onClick={() => handleDeleteEdge(edge.from_node, edge.to_node)}
-                                className="p-0.5 rounded text-dark-text-secondary/30 hover:text-red-400
+                                className="p-0.5 rounded text-dark-text-secondary hover:text-red-400
                                            opacity-0 group-hover:opacity-100 transition-all flex-shrink-0"
                                 title="Delete this relationship"
                               >
@@ -475,13 +475,13 @@ export default function KnowledgeGraphTab() {
                     )}
 
                     {neighborhood.edges.length === 0 && neighborhood.nodes.length === 0 && (
-                      <p className="text-xs text-dark-text-secondary/50 italic">
+                      <p className="text-xs text-dark-text-secondary italic">
                         No connections found for this node
                       </p>
                     )}
                   </>
                 ) : (
-                  <p className="text-sm text-dark-text-secondary/50 italic py-4 text-center">
+                  <p className="text-sm text-dark-text-secondary italic py-4 text-center">
                     Failed to load node details
                   </p>
                 )}

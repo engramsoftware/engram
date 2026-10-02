@@ -289,7 +289,7 @@ export default function MessageBubble({ message, isThinking = false }: Props) {
                   className={`transition-transform ${contextOpen ? 'rotate-0' : '-rotate-90'}`}
                 />
                 <span>Context used</span>
-                <span className="text-dark-text-secondary/50">
+                <span className="text-dark-text-secondary">
                   ({Object.keys(ctx).length} source{Object.keys(ctx).length !== 1 ? 's' : ''})
                 </span>
               </button>
@@ -301,7 +301,7 @@ export default function MessageBubble({ message, isThinking = false }: Props) {
                       <div>
                         <span className="text-purple-400 font-medium">Memories</span>
                         <span className="ml-1">({ctx.memories.length})</span>
-                        <ul className="mt-0.5 space-y-0.5 text-dark-text-secondary/80">
+                        <ul className="mt-0.5 space-y-0.5 text-dark-text-secondary">
                           {ctx.memories.map((m, i) => (
                             <li key={i} className="truncate max-w-[400px]">{m}</li>
                           ))}
@@ -314,7 +314,7 @@ export default function MessageBubble({ message, isThinking = false }: Props) {
                       <Network size={11} className="text-cyan-400 mt-0.5 flex-shrink-0" />
                       <div>
                         <span className="text-cyan-400 font-medium">Knowledge graph</span>
-                        <p className="mt-0.5 text-dark-text-secondary/80 truncate max-w-[400px]">
+                        <p className="mt-0.5 text-dark-text-secondary truncate max-w-[400px]">
                           {ctx.graph}
                         </p>
                       </div>

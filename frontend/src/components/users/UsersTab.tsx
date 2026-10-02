@@ -192,7 +192,7 @@ export default function UsersTab() {
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               className="w-full bg-dark-bg-primary border border-dark-border rounded-lg
-                         px-3 py-2 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/40
+                         px-3 py-2 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/70
                          focus:outline-none focus:border-dark-accent-primary"
             />
             <input
@@ -201,7 +201,7 @@ export default function UsersTab() {
               value={newEmail}
               onChange={(e) => setNewEmail(e.target.value)}
               className="w-full bg-dark-bg-primary border border-dark-border rounded-lg
-                         px-3 py-2 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/40
+                         px-3 py-2 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/70
                          focus:outline-none focus:border-dark-accent-primary"
             />
             <input
@@ -210,7 +210,7 @@ export default function UsersTab() {
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
               className="w-full bg-dark-bg-primary border border-dark-border rounded-lg
-                         px-3 py-2 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/40
+                         px-3 py-2 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/70
                          focus:outline-none focus:border-dark-accent-primary"
             />
             {createError && (

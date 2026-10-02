@@ -181,7 +181,7 @@ export default function EmailSettings({ config, onUpdate }: Props) {
               onChange={(e) => setUsername(e.target.value)}
               placeholder="you@gmail.com"
               className="w-full bg-dark-bg-primary border border-dark-border rounded-md
-                         px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/40
+                         px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/70
                          focus:outline-none focus:border-dark-accent-primary"
             />
           </div>
@@ -190,7 +190,7 @@ export default function EmailSettings({ config, onUpdate }: Props) {
           <div>
             <label className="block text-xs text-dark-text-secondary mb-1">
               App Password {config?.password_set && !password && (
-                <span className="text-dark-text-secondary/60">
+                <span className="text-dark-text-secondary">
                   ({config.password_masked} — leave empty to keep)
                 </span>
               )}
@@ -201,7 +201,7 @@ export default function EmailSettings({ config, onUpdate }: Props) {
               onChange={(e) => setPassword(e.target.value)}
               placeholder={config?.password_set ? '••••••••' : '16-char app password'}
               className="w-full bg-dark-bg-primary border border-dark-border rounded-md
-                         px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/40
+                         px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/70
                          focus:outline-none focus:border-dark-accent-primary"
             />
           </div>
@@ -218,7 +218,7 @@ export default function EmailSettings({ config, onUpdate }: Props) {
                 onChange={(e) => setRecipient(e.target.value)}
                 placeholder="Same as Gmail if empty"
                 className="w-full bg-dark-bg-primary border border-dark-border rounded-md
-                           px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/40
+                           px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/70
                            focus:outline-none focus:border-dark-accent-primary"
               />
             </div>
@@ -232,7 +232,7 @@ export default function EmailSettings({ config, onUpdate }: Props) {
                 onChange={(e) => setFromName(e.target.value)}
                 placeholder="Engram"
                 className="w-full bg-dark-bg-primary border border-dark-border rounded-md
-                           px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/40
+                           px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/70
                            focus:outline-none focus:border-dark-accent-primary"
               />
             </div>

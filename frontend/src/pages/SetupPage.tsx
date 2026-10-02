@@ -12,7 +12,9 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
-import { authApi } from '../services/api'
+import { useUIStore } from '../stores/uiStore'
+import { authApi, settingsApi } from '../services/api'
+import { PROVIDER_META } from '../utils/providers'
 import {
   MessageSquare,
   User,
@@ -92,6 +94,8 @@ export default function SetupPage() {
 
   // Step 4: Config
   const [apiKey, setApiKey] = useState('')
+  const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [testing, setTesting] = useState(false)
 
   const { login } = useAuthStore()
   const navigate = useNavigate()
@@ -111,48 +115,56 @@ export default function SetupPage() {
     }
   }
 
-  /** Step 4: Save provider config and finish */
+  /** Go to the app; without a working provider, land on Settings > Models */
+  const enterApp = (needsProvider: boolean) => {
+    if (needsProvider) useUIStore.getState().openSettings('models')
+    navigate('/')
+  }
+
+  /** Step 4: try the connection with what was entered */
+  const handleTest = async () => {
+    if (!provider || provider === 'skip') return
+    setTesting(true)
+    setTestResult(null)
+    try {
+      const result = await settingsApi.testConnection(provider, apiKey || undefined)
+      setTestResult(result.success
+        ? { ok: true, message: 'Connected' }
+        : { ok: false, message: result.error || result.message || 'No response from the provider' })
+    } catch (err) {
+      setTestResult({ ok: false, message: err instanceof Error ? err.message : 'Test failed' })
+    } finally {
+      setTesting(false)
+    }
+  }
+
+  /** Step 4: Save provider config and finish. A failed save is shown, not skipped silently. */
   const handleFinish = async () => {
+    if (!provider || provider === 'skip') { enterApp(true); return }
     setError('')
     setIsLoading(true)
     try {
-      if (provider && provider !== 'skip') {
-        // Save the LLM provider settings
-        const token = useAuthStore.getState().token
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-        }
-        if (token) headers['Authorization'] = `Bearer ${token}`
-
-        const settings: Record<string, unknown> = {
-          providers: {
-            [provider]: {
-              enabled: true,
-              ...(apiKey ? { api_key: apiKey } : {}),
-            },
-          },
-          default_provider: provider,
-        }
-
-        const res = await fetch('/api/settings/llm', {
-          method: 'PUT',
-          headers,
-          body: JSON.stringify(settings),
-        })
-
-        if (!res.ok) {
-          console.warn('Failed to save LLM settings:', await res.text())
-          // Don't block — user can configure later in Settings
-        }
-      }
-      navigate('/')
+      await settingsApi.updateLLMSettings({
+        providers: { [provider]: { enabled: true, ...(apiKey ? { api_key: apiKey } : {}) } },
+        default_provider: provider,
+      })
     } catch (err) {
-      // Non-blocking — let them in even if settings save fails
-      console.warn('Setup finish error:', err)
-      navigate('/')
-    } finally {
+      setError(`Couldn't save your ${selectedProvider?.name ?? 'provider'} settings: ${
+        err instanceof Error ? err.message : 'request failed'}. Try again, or skip and set it up in Settings.`)
       setIsLoading(false)
+      return
     }
+    // Pick a default model so the first chat works; if the list can't be read yet, Settings can do it later
+    try {
+      const models: { id: string }[] = await settingsApi.getModels(provider)
+      if (models.length > 0) {
+        await settingsApi.updateLLMSettings({ default_provider: provider, default_model: models[0].id })
+      }
+    } catch {
+      // Not fatal: the provider is saved; models can be refreshed in Settings > Models
+    }
+    setIsLoading(false)
+    enterApp(false)
   }
 
   const selectedProvider = PROVIDERS.find(p => p.id === provider)
@@ -185,7 +197,7 @@ export default function SetupPage() {
         <div className="flex justify-between text-xs text-dark-text-secondary mb-6">
           <span className={step >= 1 ? 'text-indigo-400' : ''}>1. Terms</span>
           <span className={step >= 2 ? 'text-indigo-400' : ''}>2. Account</span>
-          <span className={step >= 3 ? 'text-indigo-400' : ''}>3. AI Provider</span>
+          <span className={step >= 3 ? 'text-indigo-400' : ''}>3. AI model</span>
           <span className={step >= 4 ? 'text-indigo-400' : ''}>4. Configure</span>
         </div>
 
@@ -472,9 +484,9 @@ export default function SetupPage() {
             {provider === 'skip' ? (
               <div className="p-4 rounded-lg bg-dark-bg-secondary border border-dark-border">
                 <p className="text-dark-text-secondary text-sm">
-                  No worries! You can set up an AI provider anytime from the
-                  <strong className="text-dark-text-primary"> Settings </strong>
-                  page (gear icon in the sidebar).
+                  No worries! You can set up an AI provider any time from
+                  <strong className="text-dark-text-primary"> Settings → Models</strong>.
+                  We'll take you there now.
                 </p>
               </div>
             ) : selectedProvider?.needsKey ? (
@@ -528,7 +540,8 @@ export default function SetupPage() {
                       <strong className="text-dark-text-primary">3.</strong> Click "Start Server" in LM Studio
                     </p>
                     <p className="text-dark-text-secondary">
-                      Engram will connect to <code className="text-indigo-300 bg-dark-bg-primary px-1 rounded">localhost:1234</code> automatically.
+                      Engram connects to <code className="text-indigo-300 bg-dark-bg-primary px-1 rounded">{PROVIDER_META.lmstudio.defaultUrl}</code>
+                      {' '}(your computer, as seen from inside Docker). If Engram doesn't run in Docker, change the address in Settings → Models.
                     </p>
                   </>
                 )}
@@ -546,11 +559,39 @@ export default function SetupPage() {
                       <strong className="text-dark-text-primary">3.</strong> Run: <code className="text-indigo-300 bg-dark-bg-primary px-1 rounded">ollama serve</code>
                     </p>
                     <p className="text-dark-text-secondary">
-                      Engram will connect to <code className="text-indigo-300 bg-dark-bg-primary px-1 rounded">localhost:11434</code> automatically.
+                      Engram connects to <code className="text-indigo-300 bg-dark-bg-primary px-1 rounded">{PROVIDER_META.ollama.defaultUrl}</code>
+                      {' '}(your computer, as seen from inside Docker). If Engram doesn't run in Docker, change the address in Settings → Models.
                     </p>
                   </>
                 )}
               </div>
+            )}
+
+            {provider !== 'skip' && (
+              <div className="flex items-center gap-3 flex-wrap">
+                <button
+                  onClick={handleTest}
+                  disabled={testing || (selectedProvider?.needsKey && !apiKey)}
+                  className="px-4 py-2 rounded-lg text-sm text-dark-text-primary border border-dark-border
+                             hover:border-indigo-500/60 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {testing ? 'Testing…' : 'Test connection'}
+                </button>
+                {testResult && (
+                  <span role="status" className={`text-sm ${testResult.ok ? 'text-green-400' : 'text-red-400'}`}>
+                    {testResult.message}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {error && provider !== 'skip' && (
+              <button
+                onClick={() => enterApp(true)}
+                className="text-sm text-dark-text-secondary underline hover:text-dark-text-primary"
+              >
+                Skip for now and set it up in Settings
+              </button>
             )}
 
             <div className="flex gap-3 mt-6">

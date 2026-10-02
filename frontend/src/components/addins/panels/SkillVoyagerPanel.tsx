@@ -12,6 +12,7 @@ import {
   CheckCircle2, XCircle, AlertTriangle, Clock,
 } from 'lucide-react'
 import { addinsApi } from '../../../services/api'
+import { useUIStore } from '../../../stores/uiStore'
 
 /** Skill data from the backend. */
 interface Skill {
@@ -132,10 +133,14 @@ export default function SkillVoyagerPanel() {
     }
   }
 
+  // Goes through update_settings (not toggle_auto_learn) so this pill and the
+  // "Auto-learn" switch in Settings > Add-ins always agree
   const handleToggleAutoLearn = async () => {
+    if (!data) return
+    const next = !data.auto_learn
     try {
-      const result = await voyagerAction('toggle_auto_learn')
-      setData(prev => prev ? { ...prev, auto_learn: result.auto_learn } : prev)
+      await voyagerAction('update_settings', { auto_learn: next })
+      setData(prev => prev ? { ...prev, auto_learn: next } : prev)
     } catch (e: any) {
       setError(e.message)
     }
@@ -201,7 +206,14 @@ export default function SkillVoyagerPanel() {
               {data.auto_learn ? 'Learning ON' : 'Learning OFF'}
             </button>
             <button
+              onClick={() => useUIStore.getState().openSettings('addins')}
+              className="text-[10px] px-2 py-1 rounded-full text-dark-text-secondary hover:text-dark-text-primary hover:bg-dark-bg-secondary transition-colors"
+            >
+              Settings
+            </button>
+            <button
               onClick={fetchDashboard}
+              aria-label="Refresh"
               className="p-1.5 rounded-lg text-dark-text-secondary hover:text-dark-text-primary hover:bg-dark-bg-secondary transition-colors"
             >
               <RefreshCw size={14} />

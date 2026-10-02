@@ -8,9 +8,10 @@ import { useState, useEffect, useCallback } from 'react'
 import {
   Bell, Mail, Clock, Check, AlertTriangle,
   Trash2, RefreshCw, Ban, CheckCheck, Filter,
-  Loader2,
+  Loader2, Settings,
 } from 'lucide-react'
-import { notificationsApi } from '../../services/api'
+import { notificationsApi, settingsApi } from '../../services/api'
+import { useUIStore } from '../../stores/uiStore'
 
 interface Notification {
   id: string
@@ -80,6 +81,14 @@ export default function NotificationsTab() {
   const [isLoading, setIsLoading] = useState(true)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const openSettings = useUIStore(s => s.openSettings)
+  // Nothing can be sent while email is off or has no password; say so here
+  const [emailReady, setEmailReady] = useState(true)
+  useEffect(() => {
+    settingsApi.getLLMSettings()
+      .then(s => setEmailReady(!!s.email?.enabled && !!s.email?.password_set))
+      .catch(() => { /* keep quiet: the list still works */ })
+  }, [])
 
   const fetchNotifications = useCallback(async () => {
     try {
@@ -199,6 +208,14 @@ export default function NotificationsTab() {
             )}
           </div>
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => openSettings('email')}
+              className="flex items-center gap-1 px-2 py-1 text-xs text-dark-text-secondary
+                         hover:text-dark-text-primary transition-colors"
+            >
+              <Settings size={14} />
+              Email settings
+            </button>
             {unread > 0 && (
               <button
                 onClick={handleMarkAllRead}
@@ -212,6 +229,14 @@ export default function NotificationsTab() {
             )}
           </div>
         </div>
+
+        {!emailReady && (
+          <div role="status" className="mb-3 px-3 py-2 rounded-md bg-yellow-500/10 border border-yellow-500/30 text-xs
+                                        text-yellow-400 [.light_&]:text-yellow-800 flex flex-wrap items-center gap-2">
+            Email isn't set up, so reminders and summaries can't be sent.
+            <button onClick={() => openSettings('email')} className="underline hover:no-underline">Set up email</button>
+          </div>
+        )}
 
         {/* Filter tabs */}
         <div className="flex items-center gap-1">

@@ -9,6 +9,7 @@ import { useState, useEffect, useRef } from 'react'
 import { ChevronDown, Loader2 } from 'lucide-react'
 import { settingsApi, conversationsApi } from '../../services/api'
 import { useChatStore } from '../../stores/chatStore'
+import { useUIStore } from '../../stores/uiStore'
 import { friendlyModelName } from '../../utils/modelNames'
 import { newChatProvider } from '../../utils/providers'
 import type { LLMSettings } from '../../types/chat.types'
@@ -29,6 +30,8 @@ export default function ModelSelector() {
   const [models, setModels] = useState<string[]>([])
   const [isLoadingModels, setIsLoadingModels] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
+  const [pickError, setPickError] = useState('')
+  const openSettings = useUIStore(s => s.openSettings)
   const dropdownRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
 
@@ -132,7 +135,7 @@ export default function ModelSelector() {
     <div className="relative" ref={dropdownRef}>
       <button
         ref={triggerRef}
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => { setIsOpen(!isOpen); setPickError('') }}
         aria-haspopup="listbox"
         aria-expanded={isOpen}
         className="flex items-center gap-2 px-3 py-1.5 rounded-lg
@@ -175,9 +178,11 @@ export default function ModelSelector() {
                 role="option"
                 aria-selected={model === selectedModel}
                 onClick={async () => {
+                  const previous = selectedModel
                   setSelectedModel(model)
                   setIsOpen(false)
-                  // Save model choice to conversation and as default
+                  setPickError('')
+                  // Save the choice to this conversation and as the default for new chats
                   try {
                     if (activeConversationId) {
                       await conversationsApi.update(activeConversationId, {
@@ -191,6 +196,8 @@ export default function ModelSelector() {
                     })
                   } catch (e) {
                     console.error('Failed to update model:', e)
+                    setSelectedModel(previous)
+                    setPickError(`Couldn't switch to ${friendlyModelName(model)}. Try again.`)
                   }
                 }}
                 className={`w-full text-left px-3 py-2.5 sm:px-2 sm:py-1.5 rounded text-sm
@@ -200,13 +207,31 @@ export default function ModelSelector() {
                            }`}
               >
                 <span>{friendlyModelName(model)}</span>
-                {model !== friendlyModelName(model) && (
-                  <span className="text-xs opacity-50 ml-1">({model.split('-').slice(-1)[0]})</span>
+                {/* Only when two models share a friendly name: show the raw ID to tell them apart */}
+                {models.filter(m => friendlyModelName(m) === friendlyModelName(model)).length > 1 && (
+                  <span className="text-xs opacity-60 ml-1">({model})</span>
                 )}
               </button>
             ))}
           </div>
+
+          <div className="px-3 py-2 border-t border-dark-border flex items-center justify-between gap-2">
+            <span className="text-[11px] text-dark-text-secondary">Also used for new chats</span>
+            <button
+              type="button"
+              onClick={() => { setIsOpen(false); openSettings('models') }}
+              className="text-xs text-dark-accent-primary hover:underline focus:outline-none focus-visible:underline"
+            >
+              Manage models…
+            </button>
+          </div>
         </div>
+      )}
+      {pickError && (
+        <p role="alert" className="absolute top-full left-0 mt-1 w-max max-w-[18rem] px-2 py-1 rounded bg-dark-bg-secondary
+                                   border border-red-500/40 text-xs text-red-400 [.light_&]:text-red-700 z-50">
+          {pickError}
+        </p>
       )}
     </div>
   )

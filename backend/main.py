@@ -315,8 +315,10 @@ if STATIC_DIR.is_dir() and (STATIC_DIR / "index.html").is_file():
         All other paths return index.html for client-side routing.
         """
         # Try to serve a static file first (favicon.ico, robots.txt, etc.)
-        file_path = STATIC_DIR / full_path
-        if full_path and file_path.is_file() and ".." not in full_path:
+        # Resolve and require the result to stay inside STATIC_DIR: "//data/app.db"
+        # arrives as "/data/app.db", and joining an absolute path discards STATIC_DIR.
+        file_path = (STATIC_DIR / full_path).resolve()
+        if full_path and file_path.is_relative_to(STATIC_DIR.resolve()) and file_path.is_file():
             return FileResponse(str(file_path))
         # Otherwise return index.html for React Router
         return FileResponse(str(STATIC_DIR / "index.html"))

@@ -21,6 +21,7 @@ export default {
           accent: {
             primary: 'rgb(var(--accent-primary) / <alpha-value>)',
             hover: 'rgb(var(--accent-hover) / <alpha-value>)',
+            text: 'rgb(var(--accent-text) / <alpha-value>)',
           }
         }
       }

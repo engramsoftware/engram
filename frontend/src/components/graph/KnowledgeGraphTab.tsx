@@ -210,7 +210,7 @@ export default function KnowledgeGraphTab() {
           <button
             type="button"
             onClick={() => useUIStore.getState().openSettings('search')}
-            className="mt-3 text-xs text-dark-accent-primary hover:underline focus:outline-none focus-visible:underline"
+            className="mt-3 text-xs text-dark-accent-text hover:underline focus:outline-none focus-visible:underline"
           >
             Set up Neo4j in Settings → Search &amp; Graph
           </button>

@@ -92,7 +92,7 @@ export default function BraveSearchSettings({ config, onUpdate }: Props) {
           href="https://api-dashboard.search.brave.com/app/keys"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-dark-accent-primary hover:underline"
+          className="text-dark-accent-text hover:underline"
         >
           api-dashboard.search.brave.com
         </a>

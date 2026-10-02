@@ -16,13 +16,16 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from config import get_settings
+from middleware.client_ip import client_ip, parse_networks
+
 logger = logging.getLogger(__name__)
 
 # Rate-limited path prefixes and their limits: (max_requests, window_seconds)
 _RATE_LIMITS: Dict[str, Tuple[int, int]] = {
     "/api/auth/login": (5, 60),            # 5 attempts per minute
     "/api/auth/register": (3, 300),        # 3 registrations per 5 minutes
-    "/api/auth/reset-password": (3, 300),  # 3 reset attempts per 5 minutes
+    "/api/tokens": (10, 300),              # 10 new API tokens per 5 minutes
 }
 
 
@@ -41,16 +44,12 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         # (ip, path_prefix) -> list of timestamps
         self._counters: Dict[Tuple[str, str], list] = defaultdict(list)
         self._last_cleanup = time.time()
+        self._trusted_proxies = parse_networks(get_settings().trusted_proxies)
         logger.info("RateLimitMiddleware active for auth endpoints")
 
     def _get_client_ip(self, request: Request) -> str:
-        """Extract client IP from request, respecting X-Forwarded-For."""
-        forwarded = request.headers.get("x-forwarded-for")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
-        if request.client:
-            return request.client.host
-        return "unknown"
+        """Client IP (X-Forwarded-For only from TRUSTED_PROXIES)."""
+        return client_ip(request, self._trusted_proxies) or "unknown"
 
     def _cleanup_stale(self) -> None:
         """Remove expired timestamps older than the largest window."""

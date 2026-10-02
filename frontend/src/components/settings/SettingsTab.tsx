@@ -38,7 +38,7 @@ export const SETTINGS_SECTIONS: Record<string, SectionMeta> = {
   addins: { label: 'Add-ins', icon: <Puzzle size={16} />, description: 'Extra abilities for Engram.' },
   account: { label: 'Account', icon: <UserCircle size={16} />, description: 'Your profile, password, API tokens and how Engram looks.' },
   users: { label: 'Users', icon: <Users size={16} />, description: 'People who can sign in to this Engram. Only admins see this section.' },
-  data: { label: 'Data & logs', icon: <Database size={16} />, description: 'Export or import your data, and server diagnostics.' },
+  data: { label: 'Data & logs', icon: <Database size={16} />, description: 'Export or import your data. Admins also see server diagnostics.' },
 }
 
 const ALL_GROUPS: { label: string; ids: string[] }[] = [

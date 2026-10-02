@@ -346,6 +346,8 @@ LLM provider API keys are configured through the **Settings** tab in the app. Th
 
 You can set environment variables in `docker-compose.yml` or mount a `.env` file. See `backend/.env.example` for all options.
 
+**Behind a reverse proxy?** Set `TRUSTED_PROXIES` to the proxy's IP (or CIDR) so Engram uses the client address from `X-Forwarded-For`. Without it the header is ignored, so nobody can fake a LAN address. On Docker Desktop (Windows/macOS), every connection can appear to come from Docker's own network, so the LAN-only check can't tell local and remote visitors apart there. Don't expose the port to the internet.
+
 ### Local LLM Providers (LM Studio, Ollama)
 
 If you run LM Studio or Ollama on your host machine, use `host.docker.internal` as the hostname so the Docker container can reach them:

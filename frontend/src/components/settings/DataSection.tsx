@@ -1,7 +1,7 @@
 /**
  * Settings > Data & logs.
  * - Your data: export (first) and ChatGPT import (asks before importing)
- * - Diagnostics: server-wide log levels and the live log viewer, collapsed.
+ * - Diagnostics (admins only): server-wide log levels and the live log viewer, collapsed.
  *   The viewer stays mounted while hidden so pause and filters survive, but it
  *   only fetches and streams while it is on screen.
  */
@@ -16,6 +16,7 @@ import { ActionButton, ActionStatus, Disclosure, useAction } from './primitives'
 export default function DataSection({ active }: { active: boolean }) {
   const [diagnosticsOpen, setDiagnosticsOpen] = useState(false)
   const [logsOpen, setLogsOpen] = useState(false)
+  const isAdmin = useAuthStore(s => !!s.user?.is_admin)
 
   return (
     <div className="space-y-6">
@@ -24,7 +25,7 @@ export default function DataSection({ active }: { active: boolean }) {
         <YourData />
       </section>
 
-      <section aria-labelledby="data-diagnostics" className="space-y-3">
+      {isAdmin && <section aria-labelledby="data-diagnostics" className="space-y-3">
         <div>
           <h3 id="data-diagnostics" className="text-[10px] font-semibold uppercase tracking-wider text-dark-text-secondary">
             Diagnostics
@@ -41,7 +42,7 @@ export default function DataSection({ active }: { active: boolean }) {
             <LogViewer active={active && logsOpen} />
           </Disclosure>
         </div>
-      </section>
+      </section>}
     </div>
   )
 }

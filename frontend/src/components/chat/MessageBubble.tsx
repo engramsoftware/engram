@@ -126,33 +126,13 @@ export default function MessageBubble({ message, isThinking = false }: Props) {
               <span className="text-sm text-dark-text-secondary">Thinking...</span>
             </div>
           ) : (
-            <div className={`prose prose-invert prose-sm max-w-none
-                            prose-p:leading-relaxed
-                            prose-headings:font-semibold
-                            prose-h1:text-xl prose-h1:border-b prose-h1:border-dark-border prose-h1:pb-2
-                            prose-h2:text-lg prose-h2:text-indigo-300
-                            prose-h3:text-base prose-h3:text-dark-text-primary
-                            prose-li:leading-relaxed
-                            prose-pre:p-0 prose-pre:bg-transparent prose-pre:my-3
-                            prose-code:text-indigo-300 prose-code:bg-dark-bg-secondary
-                            prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded
-                            prose-code:before:content-none prose-code:after:content-none
-                            prose-a:text-indigo-400 prose-a:no-underline hover:prose-a:underline
-                            prose-strong:text-dark-text-primary
-                            prose-hr:border-dark-border
-                            prose-blockquote:border-indigo-500/50 prose-blockquote:text-dark-text-secondary
-                            prose-table:border-collapse prose-th:border prose-th:border-dark-border
-                            prose-th:px-3 prose-th:py-2 prose-th:bg-dark-bg-secondary
-                            prose-td:border prose-td:border-dark-border prose-td:px-3 prose-td:py-2
-                            prose-p:my-2.5 prose-headings:mt-6 prose-headings:mb-3
-                            prose-li:my-1 prose-ul:my-3 prose-ol:my-3
-                            prose-hr:my-6`}>
+            <div className="md-content">
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
                   img({ src, alt, ...props }) {
                     return (
-                      <figure className="my-4 not-prose">
+                      <figure className="my-4">
                         <img
                           src={src}
                           alt={alt || 'Research image'}
@@ -183,7 +163,7 @@ export default function MessageBubble({ message, isThinking = false }: Props) {
                     }
                     return <pre {...props}>{children}</pre>
                   },
-                  code({ className, children, ...props }) {
+                  code({ node, className, children, ...props }) {  // keep `node` out of the DOM attributes
                     const match = /language-(\w+)/.exec(className || '')
                     const codeStr = String(children).replace(/\n$/, '')
 
@@ -200,8 +180,8 @@ export default function MessageBubble({ message, isThinking = false }: Props) {
                     return (
                       <div className="relative group/code rounded-lg overflow-hidden border border-dark-border my-3">
                         {/* Language label + copy button */}
-                        <div className="flex items-center justify-between px-4 py-1.5 bg-[#1e1e2e] border-b border-dark-border">
-                          <span className="text-xs text-dark-text-secondary font-mono">
+                        <div className="flex items-center justify-between px-4 py-1.5 bg-[#1e1e2e] border-b border-white/10">
+                          <span className="text-xs text-gray-400 font-mono">
                             {match[1]}
                           </span>
                           <div className="flex items-center gap-2">
@@ -217,8 +197,8 @@ export default function MessageBubble({ message, isThinking = false }: Props) {
                             )}
                             <button
                               onClick={() => copyToClipboard(codeStr)}
-                              className="flex items-center gap-1 text-xs text-dark-text-secondary
-                                         hover:text-dark-text-primary transition-colors"
+                              className="flex items-center gap-1 text-xs text-gray-400
+                                         hover:text-gray-200 transition-colors"
                             >
                               {copied ? (
                                 <>
@@ -238,6 +218,12 @@ export default function MessageBubble({ message, isThinking = false }: Props) {
                           style={oneDark}
                           language={match[1]}
                           PreTag="div"
+                          // The theme also paints <code> (inline), which drew a box behind every line.
+                          // codeTagProps replaces the defaults, so keep the language class too.
+                          codeTagProps={{
+                            className: `language-${match[1]}`,
+                            style: { ...oneDark['code[class*="language-"]'], background: 'transparent' },
+                          }}
                           customStyle={{
                             margin: 0,
                             borderRadius: 0,

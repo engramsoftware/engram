@@ -418,7 +418,7 @@ export default function NotesTab() {
             {/* Content */}
             <div className="flex-1 overflow-y-auto px-4 pb-4">
               {isPreview ? (
-                <div className="prose prose-invert prose-sm max-w-none">
+                <div className="md-content">
                   <ReactMarkdown>{editContent || '*Empty note*'}</ReactMarkdown>
                 </div>
               ) : (

@@ -138,7 +138,8 @@ function YourData() {
             <h4 className="text-sm font-medium text-dark-text-primary">Import from ChatGPT</h4>
             <p className="text-xs text-dark-text-secondary mt-1">Your ChatGPT export (the ZIP, or its conversations.json).</p>
           </div>
-          <input ref={fileRef} type="file" accept=".zip,.json" onChange={chooseFile} className="sr-only" id="chatgpt-import" />
+          <input ref={fileRef} type="file" accept=".zip,.json" onChange={chooseFile} className="sr-only" id="chatgpt-import"
+                 disabled={importing} />
           <label
             htmlFor="chatgpt-import"
             className={`inline-flex items-center justify-center gap-1.5 px-3 py-1.5 min-h-[40px] sm:min-h-0 rounded-md text-xs font-medium

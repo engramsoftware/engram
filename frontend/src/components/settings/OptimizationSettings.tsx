@@ -66,6 +66,9 @@ export default function OptimizationSettings({ config, onUpdate }: Props) {
     }, 'Saved', "Couldn't change this")
   }
 
+  // Each save sends both values, so one switch waits while the other is saving
+  const saving = validationState.status === 'busy' || limitState.status === 'busy'
+
   return (
     <div className="rounded-lg border border-dark-border/60 bg-dark-bg-secondary/50 divide-y divide-dark-border/40">
       <div className="flex items-start justify-between gap-4 p-4">
@@ -78,7 +81,7 @@ export default function OptimizationSettings({ config, onUpdate }: Props) {
           <ErrorStatus state={validationState} />
         </div>
         <Switch size="sm" checked={responseValidation} onChange={flipValidation} label="Double-check answers"
-                disabled={validationState.status === 'busy'} />
+                disabled={saving} />
       </div>
 
       <div className="flex items-start justify-between gap-4 p-4">
@@ -91,7 +94,7 @@ export default function OptimizationSettings({ config, onUpdate }: Props) {
           <ErrorStatus state={limitState} />
         </div>
         <Switch size="sm" checked={historyLimit > 0} onChange={flipLimit} label="Send only recent messages"
-                disabled={limitState.status === 'busy'} />
+                disabled={saving} />
       </div>
     </div>
   )

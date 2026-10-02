@@ -12,6 +12,8 @@ interface AddinsState {
   addins: Addin[]
   /** Whether initial fetch has completed. */
   loaded: boolean
+  /** The last fetch failed (the list may be empty or stale). */
+  error: boolean
   /** Fetch addins from the API. */
   fetchAddins: () => Promise<void>
   /** Get only enabled GUI/hybrid addins (ones that register sidebar tabs). */
@@ -21,13 +23,14 @@ interface AddinsState {
 export const useAddinsStore = create<AddinsState>((set, get) => ({
   addins: [],
   loaded: false,
+  error: false,
 
   fetchAddins: async () => {
     try {
       const data = await addinsApi.list()
-      set({ addins: data, loaded: true })
+      set({ addins: data, loaded: true, error: false })
     } catch {
-      set({ loaded: true })
+      set({ loaded: true, error: true })
     }
   },
 

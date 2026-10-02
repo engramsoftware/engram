@@ -8,7 +8,7 @@
  * Settings with unsaved input asks first (see uiStore.requestLeave).
  */
 
-import { useState, useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react'
+import { useState, useEffect, useRef, type ReactNode } from 'react'
 import {
   Settings, Cloud, Globe, Mail, Puzzle, UserCircle, Users, Database, ChevronRight,
 } from 'lucide-react'
@@ -27,7 +27,7 @@ import AddinsSection from './AddinsSection'
 import AccountSection from './AccountSection'
 import UsersSection from './UsersSection'
 import DataSection from './DataSection'
-import { ActionButton, InfoNote } from './primitives'
+import { ActionButton, InfoNote, useIsPhone } from './primitives'
 
 interface SectionMeta { label: string; icon: ReactNode; description: string }
 
@@ -56,7 +56,11 @@ export default function SettingsTab() {
   const [userCount, setUserCount] = useState<number | null>(null)
   const { settingsSection, setSettingsSection, settingsView, setSettingsView, setActiveTab } = useUIStore()
   const section = ORDER.includes(settingsSection) ? settingsSection : 'models'
-  const railRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const isPhone = useIsPhone()
+  // A section is "active" (fetches, streams logs) only while it is on screen
+  const showing = (id: string) => id === section && (settingsView === 'section' || !isPhone)
+  const headingRefs = useRef<Record<string, HTMLHeadingElement | null>>({})
+  const rowRefs = useRef<Record<string, HTMLButtonElement | null>>({})
   const userName = useAuthStore(s => s.user?.name)
 
   const refreshSettings = async () => {
@@ -85,19 +89,15 @@ export default function SettingsTab() {
 
   const open = (id: string) => { setSettingsSection(id); setSettingsView('section') }
 
-  // Arrow keys / Home / End move between sections in the desktop rail
-  const onRailKeyDown = (e: KeyboardEvent<HTMLButtonElement>, index: number) => {
-    let next: number
-    if (e.key === 'ArrowDown') next = index + 1
-    else if (e.key === 'ArrowUp') next = index - 1
-    else if (e.key === 'Home') next = 0
-    else if (e.key === 'End') next = ORDER.length - 1
-    else return
-    e.preventDefault()
-    const target = ORDER[(next + ORDER.length) % ORDER.length]
-    open(target)
-    railRefs.current[target]?.focus()
-  }
+  // Phones swap the list and the section, so move focus with them: into the opened
+  // section's heading, and back to its row when returning to the list
+  const lastView = useRef(settingsView)
+  useEffect(() => {
+    if (!isPhone || lastView.current === settingsView) { lastView.current = settingsView; return }
+    lastView.current = settingsView
+    if (settingsView === 'section') headingRefs.current[section]?.focus()
+    else rowRefs.current[section]?.focus()
+  }, [settingsView, section, isPhone])
 
   if (isLoading) {
     return (
@@ -183,10 +183,10 @@ export default function SettingsTab() {
         <EmailSettings config={s.email} onUpdate={refreshSettings} />
       </div>
     )),
-    addins: <AddinsSection active={section === 'addins'} />,
+    addins: <AddinsSection active={showing('addins')} />,
     account: <AccountSection />,
-    users: <UsersSection active={section === 'users'} onCount={setUserCount} />,
-    data: <DataSection active={section === 'data'} />,
+    users: <UsersSection active={showing('users')} onCount={setUserCount} />,
+    data: <DataSection active={showing('data')} />,
   }
 
   const listView = settingsView === 'list'
@@ -218,12 +218,9 @@ export default function SettingsTab() {
                   return (
                     <button
                       key={id}
-                      ref={el => { railRefs.current[id] = el }}
                       type="button"
                       aria-current={selected ? 'page' : undefined}
-                      tabIndex={selected ? 0 : -1}
                       onClick={() => open(id)}
-                      onKeyDown={e => onRailKeyDown(e, ORDER.indexOf(id))}
                       className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors
                                   focus:outline-none focus-visible:ring-2 focus-visible:ring-dark-accent-primary ${
                         selected
@@ -253,6 +250,7 @@ export default function SettingsTab() {
                     {g.ids.map(id => (
                       <button
                         key={id}
+                        ref={el => { rowRefs.current[id] = el }}
                         type="button"
                         onClick={() => open(id)}
                         className="w-full min-h-[48px] flex items-center gap-3 px-4 py-3 text-left text-sm text-dark-text-primary
@@ -275,7 +273,8 @@ export default function SettingsTab() {
             {ORDER.map(id => (
               <section key={id} aria-labelledby={`settings-heading-${id}`} hidden={id !== section}>
                 <div className="mb-4">
-                  <h2 id={`settings-heading-${id}`} className="text-base font-semibold text-dark-text-primary">
+                  <h2 id={`settings-heading-${id}`} ref={el => { headingRefs.current[id] = el }} tabIndex={-1}
+                      className="text-base font-semibold text-dark-text-primary focus:outline-none">
                     {SETTINGS_SECTIONS[id].label}
                   </h2>
                   <p className="text-xs text-dark-text-secondary mt-0.5">{description(id)}</p>

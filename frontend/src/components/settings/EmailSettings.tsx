@@ -37,7 +37,7 @@ export default function EmailSettings({ config, onUpdate }: Props) {
   const [recipient, setRecipient] = useState(saved.recipient)
   const [fromName, setFromName] = useState(saved.fromName)
   const [saveState, runSave] = useAction()
-  const [testState, runTest] = useAction({ sticky: true })
+  const [testState, runTest, resetTest] = useAction({ sticky: true })
   const [toggleState, runToggle] = useAction()
 
   // One value per effect, so a refresh only resets a field whose saved value changed
@@ -47,10 +47,19 @@ export default function EmailSettings({ config, onUpdate }: Props) {
   useEffect(() => { setUsername(saved.username) }, [saved.username])
   useEffect(() => { setRecipient(saved.recipient) }, [saved.recipient])
   useEffect(() => { setFromName(saved.fromName) }, [saved.fromName])
+  // The test sends with the saved settings; a result is stale once they change
+  useEffect(() => { resetTest() }, [config?.password_set, saved.username, saved.recipient, saved.smtpHost, saved.smtpPort, resetTest])
 
-  const dirty = smtpHost !== saved.smtpHost || smtpPort !== saved.smtpPort || username !== saved.username
-    || recipient !== saved.recipient || fromName !== saved.fromName || password !== ''
+  // The backend keeps the saved address and recipient when they arrive empty, so an
+  // emptied field is not a change (and is restored after saving)
+  const changed = (value: string, savedValue: string) => value !== savedValue && value !== ''
+  const dirty = smtpHost !== saved.smtpHost || smtpPort !== saved.smtpPort || changed(username, saved.username)
+    || changed(recipient, saved.recipient) || fromName !== saved.fromName || password !== ''
   useDirty(dirty)
+  const restoreKept = () => {
+    if (!username) setUsername(saved.username)
+    if (!recipient) setRecipient(saved.recipient)
+  }
 
   const fields = () => ({
     smtp_host: smtpHost,
@@ -72,6 +81,7 @@ export default function EmailSettings({ config, onUpdate }: Props) {
         throw error
       }
       setPassword('')
+      restoreKept()
       onUpdate()
     }, next ? 'Email turned on' : 'Email turned off', "Couldn't change email")
   }
@@ -79,6 +89,7 @@ export default function EmailSettings({ config, onUpdate }: Props) {
   const handleSave = () => runSave(async () => {
     await settingsApi.updateLLMSettings({ email: { enabled: isEnabled, ...fields() } })
     setPassword('')
+    restoreKept()
     onUpdate()
   })
 
@@ -112,7 +123,8 @@ export default function EmailSettings({ config, onUpdate }: Props) {
         onChange={setUsername}
         placeholder="you@gmail.com"
         autoComplete="off"
-        hint="Gmail by default. For another provider, change the mail server under Advanced."
+        hint={`Gmail by default. For another provider, change the mail server under Advanced.${
+          saved.username ? ' Leave empty to keep the saved address.' : ''}`}
       />
 
       <PasswordField
@@ -135,7 +147,14 @@ export default function EmailSettings({ config, onUpdate }: Props) {
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <TextField label="Send to" type="email" value={recipient} onChange={setRecipient} placeholder="Same as above if empty" />
+        <TextField
+          label="Send to"
+          type="email"
+          value={recipient}
+          onChange={setRecipient}
+          placeholder={saved.recipient ? 'Leave empty to keep it' : 'Your email address if empty'}
+          hint={saved.recipient ? 'To send to your own address, type it here.' : undefined}
+        />
         <TextField label="Sender name" value={fromName} onChange={setFromName} placeholder="Engram" />
       </div>
 
@@ -157,8 +176,10 @@ export default function EmailSettings({ config, onUpdate }: Props) {
         <ActionStatus state={testState} />
         <ActionStatus state={saveState} />
       </ActionRow>
-      {!config?.password_set && (
+      {!config?.password_set ? (
         <p className="text-[11px] text-dark-text-secondary">Save an app password first to send a test email.</p>
+      ) : dirty && (
+        <p className="text-[11px] text-dark-text-secondary">The test email uses your saved settings; Save first to test your changes.</p>
       )}
     </SettingsCard>
   )

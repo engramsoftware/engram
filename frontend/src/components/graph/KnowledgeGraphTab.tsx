@@ -209,10 +209,10 @@ export default function KnowledgeGraphTab() {
           <p className="text-sm text-dark-text-secondary">{error}</p>
           <button
             type="button"
-            onClick={() => useUIStore.getState().openSettings('search')}
+            onClick={() => useUIStore.getState().openSettings('web')}
             className="mt-3 text-xs text-dark-accent-text hover:underline focus:outline-none focus-visible:underline"
           >
-            Set up Neo4j in Settings → Search &amp; Graph
+            Set up Neo4j in Settings → Web &amp; knowledge
           </button>
         </div>
       </div>

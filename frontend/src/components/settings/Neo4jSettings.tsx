@@ -47,8 +47,15 @@ export default function Neo4jSettings({ config, onUpdate }: Props) {
   useEffect(() => { setUsername(savedUsername) }, [savedUsername])
   useEffect(() => { setDatabase(savedDatabase) }, [savedDatabase])
 
-  const dirty = uri !== savedUri || username !== savedUsername || database !== savedDatabase || password !== ''
+  // The backend keeps the saved URI and username when they arrive empty, so an
+  // emptied field is not a change (and is restored after saving)
+  const changed = (value: string, savedValue: string) => value !== savedValue && value !== ''
+  const dirty = changed(uri, savedUri) || changed(username, savedUsername) || database !== savedDatabase || password !== ''
   useDirty(dirty)
+  const restoreKept = () => {
+    if (!uri) setUri(savedUri)
+    if (!username) setUsername(savedUsername)
+  }
 
   const fields = () => ({
     uri: uri || undefined,
@@ -69,6 +76,7 @@ export default function Neo4jSettings({ config, onUpdate }: Props) {
         throw error
       }
       setPassword('')
+      restoreKept()
       onUpdate()
     }, next ? 'Knowledge graph turned on' : 'Knowledge graph turned off', "Couldn't change the knowledge graph")
   }
@@ -76,6 +84,7 @@ export default function Neo4jSettings({ config, onUpdate }: Props) {
   const handleSave = () => runSave(async () => {
     await settingsApi.updateLLMSettings({ neo4j: { enabled: isEnabled, ...fields() } })
     setPassword('')
+    restoreKept()
     onUpdate()
   })
 
@@ -121,10 +130,12 @@ export default function Neo4jSettings({ config, onUpdate }: Props) {
         . These settings are used by the Knowledge Graph page; chat uses the server's NEO4J settings in its .env file.
       </InfoNote>
 
-      <TextField label="Connection URI" value={uri} onChange={setUri} placeholder="neo4j+s://xxxxx.databases.neo4j.io" />
+      <TextField label="Connection URI" value={uri} onChange={setUri} placeholder="neo4j+s://xxxxx.databases.neo4j.io"
+                 hint={savedUri ? 'Leave empty to keep the saved URI.' : undefined} />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <TextField label="Username" value={username} onChange={setUsername} placeholder="neo4j" />
+        <TextField label="Username" value={username} onChange={setUsername} placeholder="neo4j"
+                   hint={config?.username ? 'Leave empty to keep the saved username.' : undefined} />
         <TextField label="Database" value={database} onChange={setDatabase} placeholder="neo4j" />
       </div>
 

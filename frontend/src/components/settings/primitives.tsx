@@ -407,11 +407,20 @@ export function ConfirmButton({
 }: ConfirmButtonProps) {
   const [armed, setArmed] = useState(false)
   const cancelRef = useRef<HTMLButtonElement>(null)
-  useEffect(() => { if (armed) cancelRef.current?.focus() }, [armed])
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  // After Cancel or Confirm, focus returns to the button (when it is still there)
+  const returnFocus = useRef(false)
+  const promptId = useId()
+  useEffect(() => {
+    if (armed) cancelRef.current?.focus()
+    else if (returnFocus.current) { returnFocus.current = false; triggerRef.current?.focus() }
+  }, [armed])
+  const disarm = () => { returnFocus.current = true; setArmed(false) }
 
   if (!armed) {
     return (
       <ActionButton
+        ref={triggerRef}
         variant={variant}
         busy={busy}
         disabled={disabled}
@@ -424,15 +433,15 @@ export function ConfirmButton({
   return (
     <div
       role="group"
-      aria-label="Confirm"
-      onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setArmed(false) } }}
+      aria-labelledby={promptId}
+      onKeyDown={(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); disarm() } }}
       className={`flex flex-wrap items-center gap-2 rounded-md border px-3 py-2 ${
         danger ? 'border-red-500/40 bg-red-500/5' : 'border-dark-border bg-dark-bg-primary/60'
       }`}
     >
-      <span className="text-xs text-dark-text-primary">{prompt}</span>
-      <ActionButton ref={cancelRef} onClick={() => setArmed(false)}>Cancel</ActionButton>
-      <ActionButton variant={danger ? 'danger' : 'primary'} onClick={() => { setArmed(false); void onConfirm() }}>
+      <span id={promptId} className="text-xs text-dark-text-primary">{prompt}</span>
+      <ActionButton ref={cancelRef} onClick={disarm}>Cancel</ActionButton>
+      <ActionButton variant={danger ? 'danger' : 'primary'} onClick={() => { disarm(); void onConfirm() }}>
         {confirmLabel}
       </ActionButton>
     </div>
@@ -506,6 +515,36 @@ export function ActionStatus({ state }: { state: ActionState }) {
 /** Only shows failures (for actions whose success is visible anyway, like a switch). */
 export function ErrorStatus({ state }: { state: ActionState }) {
   return <ActionStatus state={state.status === 'error' ? state : { status: 'idle' }} />
+}
+
+// ------------------------------------------------------------------ Layout and keyboard helpers
+
+const PHONE_QUERY = '(max-width: 767px)'
+
+/** True below the md breakpoint; updates when the window is resized. */
+export function useIsPhone() {
+  const [phone, setPhone] = useState(() => window.matchMedia(PHONE_QUERY).matches)
+  useEffect(() => {
+    const mq = window.matchMedia(PHONE_QUERY)
+    const onChange = () => setPhone(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+  return phone
+}
+
+/**
+ * For radio groups where choosing saves at once: arrow keys only move focus
+ * (instead of selecting, as native radios do); Space or a click selects.
+ */
+export function moveRadioFocus(e: React.KeyboardEvent<HTMLInputElement>) {
+  const forward = e.key === 'ArrowDown' || e.key === 'ArrowRight'
+  if (!forward && e.key !== 'ArrowUp' && e.key !== 'ArrowLeft') return
+  e.preventDefault()
+  const radios = [...document.querySelectorAll<HTMLInputElement>(`input[type="radio"][name="${e.currentTarget.name}"]`)]
+    .filter(r => !r.disabled && r.getClientRects().length > 0) // skip hidden rows
+  const i = radios.indexOf(e.currentTarget)
+  radios[(i + (forward ? 1 : -1) + radios.length) % radios.length]?.focus()
 }
 
 // ------------------------------------------------------------------ Unsaved drafts

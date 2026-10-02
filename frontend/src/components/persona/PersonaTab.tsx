@@ -4,13 +4,13 @@
  * default with the radio (saves at once); create, edit and delete personas.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Plus } from 'lucide-react'
 import { personasApi } from '../../services/api'
 import type { Persona } from '../../types/addin.types'
 import {
   ActionButton, ActionRow, ActionStatus, ConfirmButton, Disclosure, ErrorStatus, StatusPill, TextArea, TextField,
-  errorText, useAction,
+  errorText, moveRadioFocus, useAction,
 } from '../settings/primitives'
 
 interface Draft { name: string; description: string; systemPrompt: string }
@@ -39,7 +39,14 @@ export default function PersonaTab() {
     }
   }
 
-  const setDefault = (p: Persona) => runDefault(async () => {
+  // Ignore a second pick while one is saving (the radio stays enabled so it keeps focus)
+  const settingDefault = useRef(false)
+  const setDefault = (p: Persona) => {
+    if (settingDefault.current) return
+    settingDefault.current = true
+    void saveDefault(p).finally(() => { settingDefault.current = false })
+  }
+  const saveDefault = (p: Persona) => runDefault(async () => {
     await personasApi.update(p.id, { isDefault: true })
     await fetchPersonas()
   }, `${p.name} is now the default`, "Couldn't change the default")
@@ -120,7 +127,7 @@ export default function PersonaTab() {
                           name="default-persona"
                           checked={p.is_default}
                           onChange={() => setDefault(p)}
-                          disabled={defaultState.status === 'busy'}
+                          onKeyDown={moveRadioFocus}
                           className="mt-1 w-4 h-4 flex-shrink-0 accent-dark-accent-primary cursor-pointer"
                         />
                         <span className="min-w-0">

@@ -109,15 +109,22 @@ export default function AddinSettingsRenderer({ addinName, disabled = false }: P
     )
   }
   if (loadFailed) {
-    return <p className="text-xs text-red-400 [.light_&]:text-red-700">Couldn't load this add-in's settings.</p>
+    return (
+      <div role="alert" className="flex items-center gap-3 text-xs text-red-400 [.light_&]:text-red-700">
+        Couldn't load this add-in's settings.
+        <ActionButton onClick={loadSchema}>Retry</ActionButton>
+      </div>
+    )
   }
   if (!schema) return <p className="text-xs text-dark-text-secondary">This add-in has no settings.</p>
-  if (disabled) return <p className="text-xs text-dark-text-secondary">Turn this add-in on to change its settings.</p>
 
   const applySaved = (patch: Values) => setSaved(prev => ({ ...prev, ...patch }))
 
+  // Turned off: the fields are hidden but stay mounted, so typed values aren't lost
   return (
-    <div className="space-y-3">
+    <>
+    {disabled && <p className="text-xs text-dark-text-secondary">Turn this add-in on to change its settings.</p>}
+    <div className="space-y-3" hidden={disabled}>
       {addinName === 'skill_voyager' && (
         <InfoNote>These settings apply to everyone on this Engram and reset when the server restarts.</InfoNote>
       )}
@@ -129,6 +136,7 @@ export default function AddinSettingsRenderer({ addinName, disabled = false }: P
         )
       )}
     </div>
+    </>
   )
 }
 
@@ -167,34 +175,38 @@ function ProviderSection({ addinName, section, saved, onSaved }: {
   const dirty = baseUrl !== savedUrl || apiKey !== '' || model !== savedModel
   useDirty(dirty)
 
-  const payload = (p: string) => ({
+  const payload = (p: string, url: string) => ({
     llm_provider: p,
-    llm_base_url: p === 'auto' ? '' : baseUrl,
+    llm_base_url: p === 'auto' ? '' : url,
     llm_api_key: apiKey, // empty keeps the saved key
     llm_model: model,
   })
 
-  // The select saves at once (with the fields as they are); it reverts on failure
+  // The select saves at once; it reverts (provider and URL) on failure. A URL belongs to
+  // one provider: switching keeps the saved URL only when returning to the saved provider,
+  // otherwise the new provider starts at its default address.
   const choose = (next: string) => {
-    const previous = provider
+    const previous = { provider, baseUrl }
+    const url = next === savedProvider ? savedUrl : ''
     setProvider(next)
+    setBaseUrl(url)
     setModels([])
-    if (next === 'auto') setBaseUrl('')
     runSelect(async () => {
       try {
-        await saveSettings(addinName, payload(next))
+        await saveSettings(addinName, payload(next, url))
       } catch (error) {
-        setProvider(previous)
+        setProvider(previous.provider)
+        setBaseUrl(previous.baseUrl)
         throw error
       }
       if (apiKey) setKeySaved(true)
       setApiKey('')
-      onSaved({ llm_provider: next, llm_base_url: next === 'auto' ? '' : baseUrl, llm_model: model })
+      onSaved({ llm_provider: next, llm_base_url: next === 'auto' ? '' : url, llm_model: model })
     }, 'Saved', "Couldn't change the provider")
   }
 
   const handleSave = () => runSave(async () => {
-    await saveSettings(addinName, payload(provider))
+    await saveSettings(addinName, payload(provider, baseUrl))
     if (apiKey) setKeySaved(true)
     setApiKey('')
     onSaved({ llm_base_url: baseUrl, llm_model: model })
@@ -235,6 +247,11 @@ function ProviderSection({ addinName, section, saved, onSaved }: {
           Not used yet: Skill Voyager currently only uses a local model. The key and model below are saved but ignored.
         </InfoNote>
       )}
+      {isLocal && (
+        <p className="text-xs text-dark-text-secondary">
+          Skill Voyager uses whichever model is loaded on that server; the Model field below is saved but not used yet.
+        </p>
+      )}
 
       {isLocal && (
         <TextField label="Server URL" value={baseUrl} onChange={setBaseUrl} placeholder={LOCAL_DEFAULT_URLS[provider]}
@@ -253,10 +270,10 @@ function ProviderSection({ addinName, section, saved, onSaved }: {
           <div className="flex items-end gap-2">
             <div className="flex-1 min-w-0">
               {models.length > 0 ? (
-                <SelectField label={isCloud ? 'Model (not used yet)' : 'Model'} value={model} onChange={setModel}
+                <SelectField label="Model (not used yet)" value={model} onChange={setModel}
                              options={[...(model && !models.includes(model) ? [model] : []), ...models].map(m => ({ value: m, label: m }))} />
               ) : (
-                <TextField label={isCloud ? 'Model (not used yet)' : 'Model'} value={model} onChange={setModel}
+                <TextField label="Model (not used yet)" value={model} onChange={setModel}
                            placeholder={isCloud ? 'gpt-4o-mini' : 'local-model'} />
               )}
             </div>
@@ -311,7 +328,8 @@ function GeneralSection({ addinName, section, saved, onSaved }: {
 
   // Switches, selects and sliders: save just this key now; revert if it fails
   const saveNow = (field: SettingsField, next: unknown) => {
-    const previous = values[field.key]
+    // A slider's local value has already moved while dragging, so revert to the saved one
+    const previous = field.type === 'range' ? saved[field.key] : values[field.key]
     setValues(v => ({ ...v, [field.key]: next }))
     runInstant(async () => {
       try {

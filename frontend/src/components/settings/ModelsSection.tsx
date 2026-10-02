@@ -6,7 +6,7 @@
  * - Cost & accuracy: response validation and the history limit
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Cloud, Monitor, RefreshCw } from 'lucide-react'
 import { settingsApi } from '../../services/api'
 import { friendlyModelName } from '../../utils/modelNames'
@@ -24,6 +24,15 @@ interface Props {
 export default function ModelsSection({ settings, onUpdate }: Props) {
   const inUse = newChatProvider(settings)
   const [pending, setPending] = useState<string | null>(null)
+  // A pick that waits for a key ("pending") is dropped once any other switch succeeds,
+  // unless it was made after that switch started (a slow earlier request must not clear it)
+  const pendingSeq = useRef(0)
+  const changePending = (p: string, on: boolean) => {
+    pendingSeq.current++
+    setPending(cur => (on ? p : cur === p ? null : cur))
+  }
+  const activationStart = () => pendingSeq.current
+  const activated = (token: number) => { if (pendingSeq.current === token) setPending(null) }
   const providers = settings.available_providers
   const cloud = providers.filter(p => providerMeta(p).needsApiKey)
   const local = providers.filter(p => !providerMeta(p).needsApiKey)
@@ -42,7 +51,9 @@ export default function ModelsSection({ settings, onUpdate }: Props) {
           settings={settings}
           inUse={p === inUse}
           pending={p === pending}
-          onPendingChange={(on) => setPending(on ? p : (pending === p ? null : pending))}
+          onPendingChange={(on) => changePending(p, on)}
+          onActivationStart={activationStart}
+          onActivated={activated}
           onUpdate={onUpdate}
         />
       ))}

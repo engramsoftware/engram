@@ -15,11 +15,14 @@ interface UIState {
   sidebarOpen: boolean
   activeTab: ActiveTab
   theme: Theme
+  /** Last opened Settings section (persisted so reload returns to it) */
+  settingsSection: string
 
   // Actions
   toggleSidebar: () => void
   setSidebarOpen: (open: boolean) => void
   setActiveTab: (tab: ActiveTab) => void
+  setSettingsSection: (section: string) => void
   setTheme: (theme: Theme) => void
   toggleTheme: () => void
 }
@@ -39,6 +42,7 @@ export const useUIStore = create<UIState>()(
       sidebarOpen: true,
       activeTab: 'chat',
       theme: 'dark',
+      settingsSection: 'models',
 
       toggleSidebar: () => set((state) => ({
         sidebarOpen: !state.sidebarOpen
@@ -47,6 +51,8 @@ export const useUIStore = create<UIState>()(
       setSidebarOpen: (open) => set({ sidebarOpen: open }),
 
       setActiveTab: (tab) => set({ activeTab: tab }),
+
+      setSettingsSection: (section) => set({ settingsSection: section }),
 
       setTheme: (theme) => {
         applyTheme(theme)
@@ -61,7 +67,7 @@ export const useUIStore = create<UIState>()(
     }),
     {
       name: 'ui-storage',
-      partialize: (state) => ({ theme: state.theme }),
+      partialize: (state) => ({ theme: state.theme, settingsSection: state.settingsSection }),
       onRehydrateStorage: () => (state) => {
         // Apply persisted theme on page load
         if (state?.theme) applyTheme(state.theme)

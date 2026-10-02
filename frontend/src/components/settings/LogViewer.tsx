@@ -68,10 +68,18 @@ export default function LogViewer() {
   const [isPaused, setIsPaused] = useState(false)
   const [levelFilter, setLevelFilter] = useState<string>('')
   const [searchFilter, setSearchFilter] = useState('')
+  // The fetch and the live stream follow a debounced copy, so typing in the search
+  // box doesn't refetch and reconnect the stream on every keystroke
+  const [debouncedSearch, setDebouncedSearch] = useState('')
   const [autoScroll, setAutoScroll] = useState(true)
   const scrollRef = useRef<HTMLDivElement>(null)
   const eventSourceRef = useRef<EventSource | null>(null)
   const { token } = useAuthStore()
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(searchFilter.trim()), 300)
+    return () => clearTimeout(t)
+  }, [searchFilter])
 
   // Auto-scroll to bottom when new logs arrive
   useEffect(() => {
@@ -95,7 +103,7 @@ export default function LogViewer() {
       const data = await settingsApi.getRecentLogs({
         limit: 300,
         level: levelFilter || undefined,
-        search: searchFilter || undefined,
+        search: debouncedSearch || undefined,
       })
       setLogs(data)
     } catch (err) {
@@ -103,7 +111,7 @@ export default function LogViewer() {
     } finally {
       setIsLoading(false)
     }
-  }, [levelFilter, searchFilter])
+  }, [levelFilter, debouncedSearch])
 
   // Initial load
   useEffect(() => {
@@ -133,7 +141,7 @@ export default function LogViewer() {
       try {
         const entry: LogEntry = JSON.parse(event.data)
         // Apply client-side search filter for SSE entries
-        if (searchFilter && !entry.message.toLowerCase().includes(searchFilter.toLowerCase())) {
+        if (debouncedSearch && !entry.message.toLowerCase().includes(debouncedSearch.toLowerCase())) {
           return
         }
         setLogs(prev => {
@@ -156,7 +164,7 @@ export default function LogViewer() {
       es.close()
       eventSourceRef.current = null
     }
-  }, [isPaused, levelFilter, searchFilter, token])
+  }, [isPaused, levelFilter, debouncedSearch, token])
 
   const clearLogs = () => setLogs([])
 
@@ -238,6 +246,7 @@ export default function LogViewer() {
             type="text"
             value={searchFilter}
             onChange={(e) => setSearchFilter(e.target.value)}
+            aria-label="Filter logs"
             placeholder="Filter logs..."
             className="w-full pl-7 pr-2 py-1 bg-dark-bg-primary border border-dark-border/50 rounded
                        text-[11px] text-dark-text-primary placeholder:text-dark-text-secondary/70

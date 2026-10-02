@@ -287,14 +287,15 @@ class SkillGenerator:
             # Use the user's configured model, fall back to provider-specific defaults
             model_name = getattr(self, "_user_model", None)
             if not model_name:
+                from llm.anthropic_provider import ANTHROPIC_DEFAULT_MODEL
                 _FALLBACK_MODELS = {
-                    "AnthropicProvider": "claude-sonnet-4-20250514",
+                    "AnthropicProvider": ANTHROPIC_DEFAULT_MODEL,
                     "OpenAIProvider": "gpt-4o",
                     "LMStudioProvider": "default",
                     "OllamaProvider": "llama3",
 
                 }
-                model_name = _FALLBACK_MODELS.get(type(llm).__name__, "claude-sonnet-4-20250514")
+                model_name = _FALLBACK_MODELS.get(type(llm).__name__, ANTHROPIC_DEFAULT_MODEL)
             response = await llm.generate(
                 messages=[{"role": "user", "content": prompt}],
                 model=model_name,

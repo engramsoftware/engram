@@ -656,7 +656,8 @@ class Addin(AddinBase):
         if provider == "openai":
             return {"models": ["gpt-4o-mini", "gpt-4o", "gpt-4", "gpt-3.5-turbo"]}
         if provider == "anthropic":
-            return {"models": ["claude-3-haiku-20240307", "claude-3-sonnet-20240229", "claude-3-opus-20240229"]}
+            from llm.anthropic_provider import AnthropicProvider
+            return {"models": [m.id for m in AnthropicProvider.KNOWN_MODELS]}
 
         return {"models": []}
 

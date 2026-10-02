@@ -18,6 +18,7 @@ from database import get_database
 from routers.auth import get_current_user
 from models.message import MessageCreate, MessageResponse
 from llm.factory import create_provider
+from llm.anthropic_provider import ANTHROPIC_DEFAULT_MODEL, ANTHROPIC_FAST_MODEL
 from search.hybrid_wrapper import HybridSearchWrapper
 from search.search_interface import SearchFilters
 from utils.encryption import decrypt_api_key
@@ -1137,7 +1138,7 @@ async def send_message(
     if not model_name:
         _FALLBACK_MODELS = {
             "openai": "gpt-4o",
-            "anthropic": "claude-sonnet-4-20250514",
+            "anthropic": ANTHROPIC_DEFAULT_MODEL,
             "lmstudio": "default",
             "ollama": "llama3",
         }
@@ -2070,7 +2071,7 @@ async def send_message(
                     # Use the active chat provider for memory extraction
                     # but pick the cheapest model to keep costs low
                     _CHEAP_MODELS = {
-                        "anthropic": "claude-haiku-4-5-20251001",
+                        "anthropic": ANTHROPIC_FAST_MODEL,
                         "openai": "gpt-4o-mini",
                     }
                     provider_for_extraction = provider_name or "lmstudio"

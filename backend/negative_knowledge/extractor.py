@@ -12,6 +12,7 @@ from datetime import datetime
 
 from memory.types import NegativeKnowledge
 from llm.factory import create_provider
+from llm.anthropic_provider import ANTHROPIC_FAST_MODEL
 from config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -257,7 +258,7 @@ class NegativeKnowledgeExtractor:
         """Get default model for provider."""
         defaults = {
             "openai": "gpt-4o-mini",
-            "anthropic": "claude-3-haiku-20240307",
+            "anthropic": ANTHROPIC_FAST_MODEL,
             "lmstudio": "local-model",
             "ollama": "llama2"
         }

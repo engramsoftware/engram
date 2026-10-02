@@ -36,6 +36,7 @@ export default function LoggingSettings() {
   const [config, setConfig] = useState<LoggingConfig | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [saving, setSaving] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const fetchConfig = async () => {
     try {
@@ -54,6 +55,7 @@ export default function LoggingSettings() {
   const handleGroupLevel = async (groupKey: string, level: string) => {
     if (!config) return
     setSaving(groupKey)
+    setError(null)
     try {
       await settingsApi.updateLoggingConfig({ groups: { [groupKey]: level } })
       // Update local state optimistically
@@ -66,6 +68,7 @@ export default function LoggingSettings() {
       } : prev)
     } catch (error) {
       console.error('Failed to update log level:', error)
+      setError(`Couldn't change the ${config.groups[groupKey]?.name ?? groupKey} log level`)
     } finally {
       setSaving(null)
     }
@@ -75,11 +78,13 @@ export default function LoggingSettings() {
   const handleRootLevel = async (level: string) => {
     if (!config) return
     setSaving('root')
+    setError(null)
     try {
       await settingsApi.updateLoggingConfig({ root_level: level })
       setConfig(prev => prev ? { ...prev, root_level: level } : prev)
     } catch (error) {
       console.error('Failed to update root log level:', error)
+      setError("Couldn't change the root log level")
     } finally {
       setSaving(null)
     }
@@ -89,8 +94,9 @@ export default function LoggingSettings() {
   const handleSetAll = async (level: string) => {
     if (!config) return
     setSaving('all')
+    setError(null)
     const groups: Record<string, string> = {}
-    for (const key of Object.keys(config.groups)) {
+    for (const key of Object.keys(config.groups ?? {})) {
       groups[key] = level
     }
     try {
@@ -98,6 +104,7 @@ export default function LoggingSettings() {
       await fetchConfig()
     } catch (error) {
       console.error('Failed to set all log levels:', error)
+      setError("Couldn't change the log levels")
     } finally {
       setSaving(null)
     }
@@ -121,6 +128,9 @@ export default function LoggingSettings() {
 
   return (
     <div className="space-y-4">
+      {error && (
+        <p role="alert" className="text-xs text-red-400 [.light_&]:text-red-700">{error}</p>
+      )}
       {/* Root level + quick actions */}
       <div className="rounded-lg border border-dark-border bg-dark-bg-secondary p-4">
         <div className="flex items-center justify-between mb-3">
@@ -137,6 +147,7 @@ export default function LoggingSettings() {
             <button
               key={level}
               onClick={() => handleRootLevel(level)}
+              aria-pressed={config.root_level === level}
               className={`px-3 py-1.5 rounded-md text-xs font-medium border transition-all ${
                 config.root_level === level
                   ? LEVEL_COLORS[level]
@@ -178,7 +189,7 @@ export default function LoggingSettings() {
       </div>
 
       {/* Per-group controls */}
-      {Object.entries(config.groups).map(([groupKey, group]) => (
+      {Object.entries(config.groups ?? {}).map(([groupKey, group]) => (
         <div
           key={groupKey}
           className="rounded-lg border border-dark-border/50 bg-dark-bg-secondary/50 px-4 py-3"
@@ -199,6 +210,8 @@ export default function LoggingSettings() {
               <button
                 key={level}
                 onClick={() => handleGroupLevel(groupKey, level)}
+                aria-pressed={group.level === level}
+                aria-label={`${group.name}: ${level}`}
                 className={`px-2.5 py-1 rounded text-[11px] font-medium border transition-all ${
                   group.level === level
                     ? LEVEL_COLORS[level]

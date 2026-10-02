@@ -1,20 +1,20 @@
 /**
  * Individual provider settings card.
- * Renders a collapsible card with enable toggle, config fields, and actions.
+ * Enable switch (one provider is active at a time; the backend disables the
+ * others), API key / base URL, the model list and default-model choice.
  *
  * @param provider - Provider key (e.g. 'openai', 'anthropic')
  * @param config - Current provider configuration from the backend
+ * @param defaultModel - The user's default model, highlighted in the list
  * @param onUpdate - Callback to refresh parent settings after save
  */
 
 import { useState, useEffect } from 'react'
-import {
-  Check, X, RefreshCw, ChevronDown, ChevronRight,
-  Zap, Loader2, Terminal
-} from 'lucide-react'
+import { RefreshCw, Zap } from 'lucide-react'
 import { settingsApi } from '../../services/api'
 import { friendlyModelName } from '../../utils/modelNames'
 import type { ProviderConfig } from '../../types/chat.types'
+import { ActionButton, ActionStatus, Badge, SettingsCard, TextField, useAction } from './primitives'
 
 interface Props {
   provider: string
@@ -29,7 +29,6 @@ const PROVIDER_META: Record<string, {
   description: string
   defaultUrl: string
   needsApiKey: boolean
-  setupHint?: string
 }> = {
   openai: {
     name: 'OpenAI',
@@ -61,286 +60,163 @@ export default function ProviderSettings({ provider, config, defaultModel, onUpd
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState(config?.base_url || '')
   const [isEnabled, setIsEnabled] = useState(config?.enabled || false)
-  const [isTesting, setIsTesting] = useState(false)
-  const [testResult, setTestResult] = useState<boolean | null>(null)
-  const [isSaving, setIsSaving] = useState(false)
-  const [isRefreshing, setIsRefreshing] = useState(false)
   const [models, setModels] = useState<string[]>(config?.available_models || [])
-  const [isExpanded, setIsExpanded] = useState(config?.enabled || false)
+  const [isOpen, setIsOpen] = useState(config?.enabled || false)
+  const [saveState, runSave] = useAction()
+  const [testState, runTest] = useAction()
+  const [toggleState, runToggle] = useAction()
+  const [modelState, runModel] = useAction()
 
-  // Sync local state when parent refreshes config from backend
-  useEffect(() => {
-    setIsEnabled(config?.enabled || false)
-    setModels(config?.available_models || [])
-    setBaseUrl(config?.base_url || '')
-  }, [config?.enabled, config?.available_models, config?.base_url])
+  // Sync from the backend after a refresh, one value per effect. A single effect
+  // keyed on the models array re-ran on every refresh (a new array each time) and
+  // wiped a base URL the user was still typing.
+  useEffect(() => { setIsEnabled(config?.enabled || false) }, [config?.enabled])
+  useEffect(() => { setBaseUrl(config?.base_url || '') }, [config?.base_url])
+  const modelsKey = (config?.available_models || []).join('\n')
+  useEffect(() => { setModels(modelsKey ? modelsKey.split('\n') : []) }, [modelsKey])
 
   const meta = PROVIDER_META[provider] || {
     name: provider, description: '', defaultUrl: '', needsApiKey: false
   }
 
-  const handleSave = async () => {
-    setIsSaving(true)
-    try {
-      await settingsApi.updateLLMSettings({
-        providers: {
-          [provider]: {
-            enabled: isEnabled,
-            api_key: apiKey || undefined,
-            base_url: baseUrl || undefined,
-          }
-        }
-      })
-      onUpdate()
-    } catch (error) {
-      console.error('Failed to save settings:', error)
-    } finally {
-      setIsSaving(false)
+  const save = (enabled: boolean) => settingsApi.updateLLMSettings({
+    providers: {
+      [provider]: {
+        enabled,
+        api_key: apiKey || undefined,
+        base_url: baseUrl || undefined,
+      }
     }
-  }
+  })
 
-  const handleTest = async () => {
-    setIsTesting(true)
-    setTestResult(null)
-    try {
-      const result = await settingsApi.testConnection(provider, apiKey, baseUrl)
-      setTestResult(result.success)
-    } catch {
-      setTestResult(false)
-    } finally {
-      setIsTesting(false)
-    }
-  }
+  const handleSave = () => runSave(async () => {
+    await save(isEnabled)
+    setApiKey('')
+    onUpdate()
+  })
 
-  const handleRefreshModels = async () => {
-    setIsRefreshing(true)
-    try {
-      const data = await settingsApi.getModels(provider)
-      setModels(data.map((m: { id: string }) => m.id))
-    } catch (error) {
-      console.error('Failed to fetch models:', error)
-    } finally {
-      setIsRefreshing(false)
-    }
-  }
-
-  // Toggle enable/disable and auto-save immediately
-  const handleToggle = async (e: React.MouseEvent) => {
-    e.stopPropagation()
-    const next = !isEnabled
+  // Enabling/disabling saves immediately; the switch reverts if that fails
+  const handleToggle = (next: boolean) => {
     setIsEnabled(next)
-    if (next) setIsExpanded(true)
-    // Auto-save the toggle so users don't have to click Save
-    try {
-      await settingsApi.updateLLMSettings({
-        providers: {
-          [provider]: {
-            enabled: next,
-            api_key: apiKey || undefined,
-            base_url: baseUrl || undefined,
-          }
-        }
-      })
+    if (next) setIsOpen(true)
+    runToggle(async () => {
+      try {
+        await save(next)
+      } catch (error) {
+        setIsEnabled(!next)
+        throw error
+      }
       onUpdate()
-    } catch (error) {
-      console.error('Failed to toggle provider:', error)
-      setIsEnabled(!next) // revert on failure
-    }
+    }, next ? `${meta.name} enabled` : `${meta.name} disabled`)
   }
+
+  const handleTest = () => runTest(async () => {
+    const result = await settingsApi.testConnection(provider, apiKey, baseUrl)
+    if (!result.success) throw new Error(result.error || result.message || 'no response from the provider')
+  }, 'Connected', 'Connection failed')
+
+  const handleRefreshModels = () => runModel(async () => {
+    const data = await settingsApi.getModels(provider)
+    setModels(data.map((m: { id: string }) => m.id))
+  }, 'Model list refreshed', "Couldn't load models")
+
+  const handleDefaultModel = (model: string) => runModel(async () => {
+    await settingsApi.updateLLMSettings({ default_provider: provider, default_model: model })
+    onUpdate()
+  }, `Default model: ${friendlyModelName(model)}`)
 
   return (
-    <div className={`rounded-lg border transition-colors ${
-      isEnabled
-        ? 'bg-dark-bg-secondary border-dark-accent-primary/30'
-        : 'bg-dark-bg-secondary/50 border-dark-border/50'
-    }`}>
-      {/* Header row — always visible */}
-      <div
-        className="flex items-center gap-3 px-4 py-3 cursor-pointer select-none"
-        onClick={() => setIsExpanded(!isExpanded)}
-      >
-        {/* Expand chevron */}
-        {isExpanded
-          ? <ChevronDown size={14} className="text-dark-text-secondary flex-shrink-0" />
-          : <ChevronRight size={14} className="text-dark-text-secondary flex-shrink-0" />
-        }
+    <SettingsCard
+      title={meta.name}
+      subtitle={meta.description}
+      enabled={isEnabled}
+      onToggle={handleToggle}
+      toggleDisabled={toggleState.status === 'busy'}
+      open={isOpen}
+      onOpenChange={setIsOpen}
+      badges={isEnabled ? <Badge tone="green"><Zap size={8} /> Active</Badge> : undefined}
+      aside={models.length > 0 ? <Badge>{models.length} model{models.length !== 1 ? 's' : ''}</Badge> : undefined}
+    >
+      <ActionStatus state={toggleState.status === 'error' ? toggleState : { status: 'idle' }} />
 
-        {/* Name + description */}
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className={`text-sm font-medium ${isEnabled ? 'text-dark-text-primary' : 'text-dark-text-secondary'}`}>
-              {meta.name}
-            </span>
-            {isEnabled && (
-              <span className="flex items-center gap-1 text-[10px] font-medium text-green-400 bg-green-400/10 px-1.5 py-0.5 rounded-full">
-                <Zap size={8} /> Active
-              </span>
-            )}
-          </div>
-          <p className="text-xs text-dark-text-secondary truncate">{meta.description}</p>
+      {meta.needsApiKey && (
+        <TextField
+          label="API key"
+          type="password"
+          value={apiKey}
+          onChange={setApiKey}
+          placeholder={config?.api_key_set ? 'Saved; leave empty to keep it' : 'sk-...'}
+          hint={config?.api_key_masked ? `Current: ${config.api_key_masked}` : undefined}
+        />
+      )}
+
+      {meta.defaultUrl && (
+        <TextField
+          label={meta.needsApiKey ? 'Base URL' : 'Server URL'}
+          type="url"
+          value={baseUrl}
+          onChange={setBaseUrl}
+          placeholder={meta.defaultUrl}
+        />
+      )}
+
+      {/* Models: pick the default */}
+      <div>
+        <div className="flex items-center justify-between mb-1">
+          <span className="text-xs font-medium text-dark-text-secondary">Default model</span>
+          <button
+            type="button"
+            onClick={handleRefreshModels}
+            disabled={modelState.status === 'busy'}
+            aria-label="Refresh models"
+            title="Refresh models"
+            className="p-1 rounded text-dark-accent-primary hover:text-dark-accent-hover transition-colors disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={modelState.status === 'busy' ? 'animate-spin' : ''} />
+          </button>
         </div>
-
-        {/* Models count badge */}
-        {models.length > 0 && (
-          <span className="text-[10px] text-dark-text-secondary bg-dark-bg-primary px-2 py-0.5 rounded-full flex-shrink-0">
-            {models.length} model{models.length !== 1 ? 's' : ''}
-          </span>
+        {models.length > 0 ? (
+          <div className="flex flex-wrap gap-1 max-h-40 overflow-y-auto" role="group" aria-label={`${meta.name} models`}>
+            {models.map(m => {
+              const isDefault = m === defaultModel
+              return (
+                <button
+                  key={m}
+                  type="button"
+                  onClick={() => handleDefaultModel(m)}
+                  disabled={!isEnabled || modelState.status === 'busy'}
+                  aria-pressed={isDefault}
+                  title={!isEnabled
+                    ? 'Enable this provider to choose its default model'
+                    : isDefault ? `${m} (default)` : `Use ${friendlyModelName(m)} by default`}
+                  className={`text-[11px] px-2 py-1 rounded border transition-colors
+                              disabled:cursor-not-allowed disabled:opacity-60 ${
+                    isDefault
+                      ? 'bg-dark-accent-primary/15 border-dark-accent-primary text-dark-text-primary font-medium'
+                      : 'bg-dark-bg-primary border-transparent text-dark-text-secondary hover:border-dark-border hover:text-dark-text-primary'
+                  }`}
+                >
+                  {friendlyModelName(m)}
+                </button>
+              )
+            })}
+          </div>
+        ) : (
+          <p className="text-xs text-dark-text-secondary italic">No models detected. Use refresh after saving.</p>
         )}
-
-        {/* Enable toggle */}
-        <button
-          onClick={handleToggle}
-          className={`relative inline-flex items-center w-10 h-6 rounded-full transition-colors flex-shrink-0 ${
-            isEnabled ? 'bg-dark-accent-primary' : 'bg-dark-border'
-          }`}
-        >
-          <span className={`inline-block w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
-            isEnabled ? 'translate-x-5' : 'translate-x-1'
-          }`} />
-        </button>
+        <ActionStatus state={modelState} />
       </div>
 
-      {/* Expanded content */}
-      {isExpanded && (
-        <div className="px-4 pb-4 pt-1 space-y-3 border-t border-dark-border/30">
-          {/* CLI setup hint */}
-          {meta.setupHint && (
-            <div className="flex items-start gap-2 bg-dark-bg-primary/60 rounded-md px-3 py-2">
-              <Terminal size={12} className="text-dark-accent-primary mt-0.5 flex-shrink-0" />
-              <div className="text-xs text-dark-text-secondary">
-                <span className="text-dark-text-primary font-medium">Setup: </span>
-                <code className="text-dark-accent-primary">{meta.setupHint}</code>
-              </div>
-            </div>
-          )}
-
-          {/* API Key */}
-          {meta.needsApiKey && (
-            <div>
-              <label className="text-xs font-medium text-dark-text-secondary block mb-1">API Key</label>
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder={config?.api_key_set ? '••••••••••••' : 'sk-...'}
-                className="w-full bg-dark-bg-primary border border-dark-border rounded-md
-                           px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/70
-                           focus:outline-none focus:border-dark-accent-primary/50 transition-colors"
-              />
-              {config?.api_key_masked && (
-                <p className="text-[10px] text-dark-text-secondary mt-1">
-                  Current: {config.api_key_masked}
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Base URL — show for local providers and cloud providers, hide for CLI providers */}
-          {meta.defaultUrl && (
-            <div>
-              <label className="text-xs font-medium text-dark-text-secondary block mb-1">
-                {meta.needsApiKey ? 'Base URL' : 'Server URL'}
-              </label>
-              <input
-                type="text"
-                value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder={meta.defaultUrl}
-                className="w-full bg-dark-bg-primary border border-dark-border rounded-md
-                           px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/70
-                           focus:outline-none focus:border-dark-accent-primary/50 transition-colors"
-              />
-            </div>
-          )}
-
-          {/* Models */}
-          <div>
-            <div className="flex items-center justify-between mb-1">
-              <label className="text-xs font-medium text-dark-text-secondary">Models</label>
-              <button
-                onClick={handleRefreshModels}
-                disabled={isRefreshing}
-                className="text-dark-accent-primary hover:text-dark-accent-hover transition-colors disabled:opacity-50"
-                title="Refresh models"
-              >
-                <RefreshCw size={12} className={isRefreshing ? 'animate-spin' : ''} />
-              </button>
-            </div>
-            {models.length > 0 ? (
-              <div className="flex flex-wrap gap-1">
-                {models.slice(0, 12).map(m => (
-                  <button
-                    key={m}
-                    onClick={async () => {
-                      try {
-                        await settingsApi.updateLLMSettings({
-                          default_provider: provider,
-                          default_model: m,
-                        })
-                        onUpdate()
-                      } catch (error) {
-                        console.error('Failed to set default model:', error)
-                      }
-                    }}
-                    className={`text-[11px] px-2 py-1 rounded transition-colors cursor-pointer ${
-                      m === defaultModel
-                        ? 'bg-dark-accent-primary/25 text-dark-accent-primary border border-dark-accent-primary/40 font-medium'
-                        : 'bg-dark-bg-primary text-dark-text-secondary hover:bg-dark-accent-primary/20 hover:text-dark-text-primary active:bg-dark-accent-primary/30'
-                    }`}
-                    title={m === defaultModel ? `${m} (default)` : `Set ${friendlyModelName(m)} as default`}
-                  >
-                    {friendlyModelName(m)}
-                  </button>
-                ))}
-                {models.length > 12 && (
-                  <span className="text-[11px] text-dark-text-secondary px-1 py-0.5">
-                    +{models.length - 12} more
-                  </span>
-                )}
-              </div>
-            ) : (
-              <p className="text-xs text-dark-text-secondary italic">
-                No models detected — click refresh
-              </p>
-            )}
-          </div>
-
-          {/* Action buttons */}
-          <div className="flex items-center gap-2 pt-1">
-            <button
-              onClick={handleTest}
-              disabled={isTesting}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-dark-bg-primary border border-dark-border
-                         rounded-md text-xs text-dark-text-primary hover:bg-dark-border/80
-                         disabled:opacity-50 transition-colors"
-            >
-              {isTesting
-                ? <><Loader2 size={12} className="animate-spin" /> Testing...</>
-                : 'Test'
-              }
-            </button>
-            <button
-              onClick={handleSave}
-              disabled={isSaving}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-dark-accent-primary hover:bg-dark-accent-hover
-                         rounded-md text-xs text-white disabled:opacity-50 transition-colors"
-            >
-              {isSaving
-                ? <><Loader2 size={12} className="animate-spin" /> Saving...</>
-                : 'Save'
-              }
-            </button>
-
-            {/* Test result indicator */}
-            {testResult !== null && (
-              <span className={`flex items-center gap-1 text-xs ${testResult ? 'text-green-400' : 'text-red-400'}`}>
-                {testResult ? <Check size={14} /> : <X size={14} />}
-                {testResult ? 'Connected' : 'Failed'}
-              </span>
-            )}
-          </div>
-        </div>
-      )}
-    </div>
+      <div className="flex items-center gap-2 flex-wrap pt-1">
+        <ActionButton onClick={handleTest} busy={testState.status === 'busy'}>
+          {testState.status === 'busy' ? 'Testing…' : 'Test'}
+        </ActionButton>
+        <ActionButton variant="primary" onClick={handleSave} busy={saveState.status === 'busy'}>
+          {saveState.status === 'busy' ? 'Saving…' : 'Save'}
+        </ActionButton>
+        <ActionStatus state={testState} />
+        <ActionStatus state={saveState} />
+      </div>
+    </SettingsCard>
   )
 }

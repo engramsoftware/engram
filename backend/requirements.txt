@@ -38,7 +38,8 @@ gliner>=0.2.24
 neo4j>=5.17.0
 
 # MCP Server (Windsurf integration)
-mcp>=1.26.0
+# <2: mcp 2.x removed the Server.list_tools/call_tool decorators mcp_server.py uses
+mcp>=1.26.0,<2
 pywin32>=310; sys_platform == "win32"
 
 # Document parsing (RAG)

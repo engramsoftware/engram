@@ -3,7 +3,7 @@
  * Controls response validation and conversation history limit.
  */
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { settingsApi } from '../../services/api'
 import type { OptimizationConfig } from '../../types/chat.types'
 import { ActionButton, ActionStatus, Switch, useAction } from './primitives'
@@ -24,6 +24,12 @@ export default function OptimizationSettings({ config, onUpdate }: Props) {
   useEffect(() => { setHistoryLimit(savedLimit) }, [savedLimit])
 
   const hasChanges = responseValidation !== savedValidation || historyLimit !== savedLimit
+  // The backend accepts any N; keep a saved value other than 3 (also across off/on)
+  const lastLimit = useRef(savedLimit > 0 ? savedLimit : 3)
+  if (savedLimit > 0) lastLimit.current = savedLimit
+  const limitWhenOn = lastLimit.current
+  // With the limit off, chat sends the last 25 messages (backend/routers/messages.py)
+  const FULL_HISTORY_CAP = 25
 
   const save = () => runSave(async () => {
     await settingsApi.updateLLMSettings({
@@ -52,15 +58,15 @@ export default function OptimizationSettings({ config, onUpdate }: Props) {
         <div>
           <h3 className="text-sm font-medium text-dark-text-primary">Limit conversation history</h3>
           <p className="text-xs text-dark-text-secondary mt-1">
-            Send only the last 3 messages instead of full history.
-            Relevant older context is still injected via hybrid search.
+            Send only the last {limitWhenOn} messages instead of the last {FULL_HISTORY_CAP}.
+            Relevant older messages are still found by search and added as context.
             Saves 10-50K tokens on long conversations.
           </p>
         </div>
         <Switch
           size="sm"
           checked={historyLimit > 0}
-          onChange={(on) => setHistoryLimit(on ? 3 : 0)}
+          onChange={(on) => setHistoryLimit(on ? limitWhenOn : 0)}
           label="Limit conversation history"
         />
       </div>

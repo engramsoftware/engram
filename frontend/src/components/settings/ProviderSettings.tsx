@@ -63,7 +63,9 @@ export default function ProviderSettings({ provider, config, defaultModel, onUpd
   const [models, setModels] = useState<string[]>(config?.available_models || [])
   const [isOpen, setIsOpen] = useState(config?.enabled || false)
   const [saveState, runSave] = useAction()
-  const [testState, runTest] = useAction()
+  const [testState, runTest, resetTest] = useAction({ sticky: true })
+  // A test result describes the values it was run with; editing them clears it
+  useEffect(() => { resetTest() }, [apiKey, baseUrl, resetTest])
   const [toggleState, runToggle] = useAction()
   const [modelState, runModel] = useAction()
 

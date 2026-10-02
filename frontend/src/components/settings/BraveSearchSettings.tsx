@@ -22,7 +22,9 @@ export default function BraveSearchSettings({ config, onUpdate }: Props) {
   const [isEnabled, setIsEnabled] = useState(config?.enabled || false)
   const [isOpen, setIsOpen] = useState(config?.enabled || false)
   const [saveState, runSave] = useAction()
-  const [testState, runTest] = useAction()
+  const [testState, runTest, resetTest] = useAction({ sticky: true })
+  // A test result describes the values it was run with; editing them clears it
+  useEffect(() => { resetTest() }, [apiKey, resetTest])
   const [toggleState, runToggle] = useAction()
 
   useEffect(() => { setIsEnabled(config?.enabled || false) }, [config?.enabled])

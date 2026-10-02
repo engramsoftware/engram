@@ -1171,7 +1171,7 @@ async def send_message(
     if provider_name in _API_KEY_PROVIDERS and not api_key:
         _preflight_error = (
             f"⚠️ **{provider_name.title()} is selected but no API key is configured.**\n\n"
-            f"Go to **Settings → LLM Providers → {provider_name.title()}** and add your API key, "
+            f"Go to **Settings → Models → {provider_name.title()}** and add your API key, "
             f"or switch to a different provider."
         )
         async def _alert_generator():
@@ -1923,7 +1923,7 @@ async def send_message(
 
             # Self-reflective validation: check response against retrieved context
             # Uses a cheap LLM call to catch hallucinations before the user sees them.
-            # Skipped when the user disables it in Settings → Optimization.
+            # Skipped when the user turns off response validation in Settings.
             if _response_validation_enabled:
                 try:
                     from pipeline.response_validator import validate_response, build_correction_note

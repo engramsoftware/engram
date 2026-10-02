@@ -23,6 +23,8 @@ interface UIState {
   setSidebarOpen: (open: boolean) => void
   setActiveTab: (tab: ActiveTab) => void
   setSettingsSection: (section: string) => void
+  /** Jump to a Settings section from anywhere (deep links in other screens) */
+  openSettings: (section: string) => void
   setTheme: (theme: Theme) => void
   toggleTheme: () => void
 }
@@ -53,6 +55,8 @@ export const useUIStore = create<UIState>()(
       setActiveTab: (tab) => set({ activeTab: tab }),
 
       setSettingsSection: (section) => set({ settingsSection: section }),
+
+      openSettings: (section) => set({ activeTab: 'settings', settingsSection: section }),
 
       setTheme: (theme) => {
         applyTheme(theme)

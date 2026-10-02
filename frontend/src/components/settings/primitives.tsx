@@ -86,12 +86,14 @@ interface SettingsCardProps {
   /** Controlled open state (optional). */
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  /** Keep the body mounted (hidden) while collapsed, so its state survives. */
+  keepMounted?: boolean
   children: ReactNode
 }
 
 export function SettingsCard({
   title, subtitle, icon, badges, aside, enabled, onToggle, toggleDisabled,
-  defaultOpen = false, open: openProp, onOpenChange, children,
+  defaultOpen = false, open: openProp, onOpenChange, keepMounted = false, children,
 }: SettingsCardProps) {
   const [openState, setOpenState] = useState(defaultOpen)
   const open = openProp ?? openState
@@ -130,8 +132,8 @@ export function SettingsCard({
           <Switch checked={!!enabled} onChange={onToggle} label={`Enable ${title}`} disabled={toggleDisabled} />
         )}
       </div>
-      {open && (
-        <div id={bodyId} className="px-4 pb-4 pt-3 space-y-3 border-t border-dark-border/40">
+      {(open || keepMounted) && (
+        <div id={bodyId} hidden={!open} className="px-4 pb-4 pt-3 space-y-3 border-t border-dark-border/40">
           {children}
         </div>
       )}
@@ -217,8 +219,12 @@ export interface ActionState {
   message?: string
 }
 
-/** Run an async settings call and keep its outcome for <ActionStatus>. */
-export function useAction() {
+/**
+ * Run an async settings call and keep its outcome for <ActionStatus>.
+ * Success messages clear after 2.5 s unless `sticky` (used for connection tests,
+ * whose result stays until the next test or until `reset` is called).
+ */
+export function useAction({ sticky = false }: { sticky?: boolean } = {}) {
   const [state, setState] = useState<ActionState>({ status: 'idle' })
   const timer = useRef<ReturnType<typeof setTimeout>>()
   useEffect(() => () => clearTimeout(timer.current), [])
@@ -229,16 +235,23 @@ export function useAction() {
     try {
       await fn()
       setState({ status: 'ok', message: okMessage })
-      timer.current = setTimeout(() => setState({ status: 'idle' }), 2500)
+      if (!sticky) timer.current = setTimeout(() => setState({ status: 'idle' }), 2500)
       return true
     } catch (err) {
       const detail = err instanceof Error && err.message ? err.message : 'request failed'
-      setState({ status: 'error', message: `${failPrefix}: ${detail}` })
+      // Servers often answer with the same words as the prefix ("Connection failed")
+      const same = detail.replace(/\.$/, '').toLowerCase() === failPrefix.toLowerCase()
+      setState({ status: 'error', message: same ? failPrefix : `${failPrefix}: ${detail}` })
       return false
     }
+  }, [sticky])
+
+  const reset = useCallback(() => {
+    clearTimeout(timer.current)
+    setState(prev => (prev.status === 'idle' || prev.status === 'busy' ? prev : { status: 'idle' }))
   }, [])
 
-  return [state, run] as const
+  return [state, run, reset] as const
 }
 
 /** Announces the result of a save/test (polite live region). */

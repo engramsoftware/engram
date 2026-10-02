@@ -31,6 +31,8 @@ interface SettingsField {
   max?: number
   step?: number
   show_when?: Record<string, unknown[]>
+  /** Secret fields: a value is saved on the server (it is never sent back). */
+  is_set?: boolean
 }
 
 /** A section in the settings schema. */
@@ -124,6 +126,7 @@ export default function AddinSettingsRenderer({ addinName }: Props) {
             currentBaseUrl={String(values.llm_base_url || '')}
             currentApiKey={String(values.llm_api_key || '')}
             currentModel={String(values.llm_model || '')}
+            apiKeySet={section.fields.some(f => f.key === 'llm_api_key' && f.is_set)}
             onUpdate={updateValue}
           />
         ) : (
@@ -176,12 +179,13 @@ const ADDIN_PROVIDERS: Record<string, {
  * Renders 3 individual provider cards — EXACT same design as main ProviderSettings.
  * Only one provider can be active at a time for the addin.
  */
-function AddinProviderCards({ addinName, currentProvider, currentBaseUrl, currentApiKey, currentModel, onUpdate }: {
+function AddinProviderCards({ addinName, currentProvider, currentBaseUrl, currentApiKey, currentModel, apiKeySet, onUpdate }: {
   addinName: string
   currentProvider: string
   currentBaseUrl: string
   currentApiKey: string
   currentModel: string
+  apiKeySet: boolean
   onUpdate: (key: string, val: unknown) => void
 }) {
   return (
@@ -196,6 +200,7 @@ function AddinProviderCards({ addinName, currentProvider, currentBaseUrl, curren
           baseUrl={currentProvider === key ? currentBaseUrl : ''}
           apiKey={currentProvider === key ? currentApiKey : ''}
           model={currentProvider === key ? currentModel : ''}
+          apiKeySet={currentProvider === key && apiKeySet}
           onUpdate={onUpdate}
         />
       ))}
@@ -209,7 +214,7 @@ function AddinProviderCards({ addinName, currentProvider, currentBaseUrl, curren
  * bg-dark-bg-secondary card, chevron, name, description, Active badge,
  * model count, enable toggle, expanded: URL/key/models/test/save.
  */
-function AddinProviderCard({ providerKey, meta, addinName, isActive, baseUrl, apiKey, model, onUpdate }: {
+function AddinProviderCard({ providerKey, meta, addinName, isActive, baseUrl, apiKey, model, apiKeySet, onUpdate }: {
   providerKey: string
   meta: { name: string; description: string; defaultUrl: string; needsApiKey: boolean }
   addinName: string
@@ -217,6 +222,7 @@ function AddinProviderCard({ providerKey, meta, addinName, isActive, baseUrl, ap
   baseUrl: string
   apiKey: string
   model: string
+  apiKeySet: boolean
   onUpdate: (key: string, val: unknown) => void
 }) {
   const [isExpanded, setIsExpanded] = useState(isActive)
@@ -375,7 +381,7 @@ function AddinProviderCard({ providerKey, meta, addinName, isActive, baseUrl, ap
                 type="password"
                 value={localApiKey}
                 onChange={e => setLocalApiKey(e.target.value)}
-                placeholder="sk-..."
+                placeholder={apiKeySet ? 'Saved; leave empty to keep it' : 'sk-...'}
                 className="w-full bg-dark-bg-primary border border-dark-border rounded-md
                            px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/70
                            focus:outline-none focus:border-dark-accent-primary/50 transition-colors"

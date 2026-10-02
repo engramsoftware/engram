@@ -14,7 +14,7 @@
  *   Ctrl+/ / Cmd+/  — Show shortcut help (toggles)
  */
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useCallback } from 'react'
 import { X, Keyboard } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import { useChatStore } from '../../stores/chatStore'
@@ -35,11 +35,15 @@ const SHORTCUTS = [
 ]
 
 export default function KeyboardShortcuts() {
-  const [showHelp, setShowHelp] = useState(false)
-  const { setActiveTab, toggleSidebar, setSidebarOpen, toggleTheme } = useUIStore()
+  // Kept in the store so Settings > Account can open the overlay too
+  const showHelp = useUIStore(s => s.showShortcuts)
+  const setShowHelp = useUIStore(s => s.setShowShortcuts)
+  const { setActiveTab, toggleSidebar, setSidebarOpen, toggleTheme, requestLeave } = useUIStore()
   const { addConversation, setActiveConversation } = useChatStore()
 
   const handleNewChat = useCallback(async () => {
+    // Ask before the conversation is created, if Settings has unsaved changes
+    if (!requestLeave()) return
     try {
       const conv = await conversationsApi.create()
       addConversation(conv)
@@ -48,7 +52,7 @@ export default function KeyboardShortcuts() {
     } catch (error) {
       console.error('Failed to create conversation:', error)
     }
-  }, [addConversation, setActiveConversation, setActiveTab])
+  }, [addConversation, setActiveConversation, setActiveTab, requestLeave])
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -94,7 +98,7 @@ export default function KeyboardShortcuts() {
 
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [handleNewChat, setActiveTab, toggleSidebar, setSidebarOpen, toggleTheme, showHelp])
+  }, [handleNewChat, setActiveTab, toggleSidebar, setSidebarOpen, toggleTheme, showHelp, setShowHelp])
 
   if (!showHelp) return null
 
@@ -102,6 +106,9 @@ export default function KeyboardShortcuts() {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
          onClick={() => setShowHelp(false)}>
       <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="shortcuts-title"
         className="bg-dark-bg-secondary border border-dark-border rounded-xl shadow-2xl
                    w-full max-w-sm mx-4 overflow-hidden"
         onClick={e => e.stopPropagation()}
@@ -110,10 +117,11 @@ export default function KeyboardShortcuts() {
         <div className="flex items-center justify-between px-5 py-4 border-b border-dark-border">
           <div className="flex items-center gap-2">
             <Keyboard size={18} className="text-dark-accent-primary" />
-            <h2 className="text-base font-semibold text-dark-text-primary">Keyboard Shortcuts</h2>
+            <h2 id="shortcuts-title" className="text-base font-semibold text-dark-text-primary">Keyboard shortcuts</h2>
           </div>
           <button
             onClick={() => setShowHelp(false)}
+            aria-label="Close"
             className="p-1 rounded-lg text-dark-text-secondary hover:text-dark-text-primary
                        hover:bg-dark-bg-primary transition-colors"
           >

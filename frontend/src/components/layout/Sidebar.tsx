@@ -9,7 +9,6 @@ import {
   MessageSquare,
   Search,
   Settings,
-  Puzzle,
   User,
   Brain,
   BookOpen,
@@ -42,7 +41,7 @@ const ADDIN_ICONS: Record<string, React.ReactNode> = {
 }
 
 export default function Sidebar() {
-  const { activeTab, setActiveTab, setSidebarOpen, theme, toggleTheme } = useUIStore()
+  const { activeTab, setActiveTab, setSidebarOpen, theme, toggleTheme, openSettings, requestLeave } = useUIStore()
 
   /** Close sidebar on mobile after navigation. */
   const closeMobileSidebar = () => {
@@ -69,8 +68,9 @@ export default function Sidebar() {
     return () => clearInterval(interval)
   }, [])
 
-  // Create new conversation
+  // Create new conversation (after asking, if Settings has unsaved changes)
   async function handleNewChat() {
+    if (!requestLeave()) return
     try {
       const conv = await conversationsApi.create()
       addConversation(conv)
@@ -99,15 +99,13 @@ export default function Sidebar() {
     { id: 'search', icon: <Search size={18} />, label: 'Search' },
     { id: 'notes', icon: <StickyNote size={18} />, label: 'Notes' },
     { id: 'documents', icon: <FileText size={18} />, label: 'Documents' },
-    { id: 'persona', icon: <Brain size={18} />, label: 'Persona' },
+    { id: 'persona', icon: <Brain size={18} />, label: 'Personas' },
     { id: 'memory', icon: <BookOpen size={18} />, label: 'Memory' },
     { id: 'budget', icon: <Wallet size={18} />, label: 'Budget' },
     { id: 'schedule', icon: <CalendarDays size={18} />, label: 'Schedule' },
     { id: 'graph', icon: <GitBranch size={18} />, label: 'Knowledge Graph' },
     ...dynamicItems,
     { id: 'settings', icon: <Settings size={18} />, label: 'Settings' },
-    { id: 'addins', icon: <Puzzle size={18} />, label: 'Add-ins' },
-    { id: 'users', icon: <User size={18} />, label: 'Users' },
     { id: 'notifications', icon: <Bell size={18} />, label: 'Notifications' },
   ]
 
@@ -192,25 +190,32 @@ export default function Sidebar() {
       {/* User Profile */}
       <div className="border-t border-dark-border p-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-dark-accent-primary flex items-center justify-center">
+          <button
+            type="button"
+            onClick={() => { openSettings('account'); closeMobileSidebar() }}
+            aria-label={`Account settings for ${user?.name || 'you'}`}
+            className="flex items-center gap-2 min-w-0 rounded-lg p-1 -m-1 hover:bg-dark-bg-secondary transition-colors
+                       focus:outline-none focus-visible:ring-2 focus-visible:ring-dark-accent-primary"
+          >
+            <div className="w-8 h-8 rounded-full bg-dark-accent-primary flex items-center justify-center flex-shrink-0">
               <User size={16} className="text-white" />
             </div>
             <span className="text-sm text-dark-text-primary truncate max-w-[100px]">
               {user?.name || 'User'}
             </span>
-          </div>
+          </button>
           <div className="flex items-center gap-1">
             <button
               onClick={toggleTheme}
               className="p-1.5 rounded-lg text-dark-text-secondary hover:text-dark-text-primary
                          hover:bg-dark-bg-secondary transition-colors"
               title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+              aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             >
               {theme === 'dark' ? <Sun size={14} /> : <Moon size={14} />}
             </button>
             <button
-              onClick={logout}
+              onClick={() => { if (requestLeave()) logout() }}
               className="text-xs text-dark-text-secondary hover:text-dark-text-primary px-1"
             >
               Logout

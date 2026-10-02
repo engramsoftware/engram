@@ -59,14 +59,21 @@ export function friendlyModelName(modelId: string): string {
 
   // Auto-generate: strip trailing date (8 digits) and dashes, title-case
   let cleaned = modelId
-    // Remove trailing date like -20250514
+    // Remove trailing date like -20250514 or -2025-04-14
     .replace(/-\d{8}$/, '')
+    .replace(/-\d{4}-\d{2}-\d{2}$/, '')
     // Remove trailing date with extra segment like -4-5-20251101 → keep -4-5
     .replace(/-(\d{8})$/, '')
 
   // Title-case each segment: "claude-opus-4-1" → "Claude Opus 4.1"
   const parts = cleaned.split('-')
+  // OpenAI naming: "gpt-4.1-mini" → "GPT-4.1 Mini"; o-series stays lower case ("o3-pro" → "o3 Pro")
+  if (parts[0].toLowerCase() === 'gpt' && parts.length > 1) {
+    const rest = parts.slice(2).map(p => p.charAt(0).toUpperCase() + p.slice(1))
+    return [`GPT-${parts[1]}`, ...rest].join(' ')
+  }
   const titled = parts.map((p, i) => {
+    if (i === 0 && /^o\d/.test(p)) return p
     // Keep version numbers as-is but join consecutive digits with dots
     if (/^\d+$/.test(p) && i > 0 && /^\d+$/.test(parts[i - 1])) {
       return '.' + p

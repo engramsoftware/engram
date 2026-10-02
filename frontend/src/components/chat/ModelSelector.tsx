@@ -29,19 +29,28 @@ export default function ModelSelector() {
   const [isLoadingModels, setIsLoadingModels] = useState(false)
   const [isOpen, setIsOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
 
-  // Close dropdown when clicking/tapping outside.
-  // Uses 'pointerup' so it doesn't race with button onPointerUp handlers
-  // inside the dropdown (pointerdown fires before the button gets the event).
+  // Close on a press outside the dropdown, or on Escape. Options use onClick, and
+  // presses inside the dropdown are ignored here, so the two can't race.
   useEffect(() => {
-    function handleClickOutside(e: PointerEvent) {
+    if (!isOpen) return
+    function handlePointerDown(e: PointerEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setIsOpen(false)
       }
     }
-    if (isOpen) {
-      document.addEventListener('pointerup', handleClickOutside)
-      return () => document.removeEventListener('pointerup', handleClickOutside)
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      e.preventDefault() // capture phase: global shortcuts see it as handled
+      setIsOpen(false)
+      triggerRef.current?.focus()
+    }
+    document.addEventListener('pointerdown', handlePointerDown)
+    document.addEventListener('keydown', handleKeyDown, true)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+      document.removeEventListener('keydown', handleKeyDown, true)
     }
   }, [isOpen])
 
@@ -124,7 +133,10 @@ export default function ModelSelector() {
   return (
     <div className="relative" ref={dropdownRef}>
       <button
+        ref={triggerRef}
         onClick={() => setIsOpen(!isOpen)}
+        aria-haspopup="listbox"
+        aria-expanded={isOpen}
         className="flex items-center gap-2 px-3 py-1.5 rounded-lg
                    bg-dark-bg-secondary hover:bg-dark-border
                    text-dark-text-primary text-sm transition-colors"
@@ -146,7 +158,7 @@ export default function ModelSelector() {
           </div>
 
           {/* Model selection */}
-          <div className="p-2 max-h-48 overflow-y-auto">
+          <div className="p-2 max-h-48 overflow-y-auto" role="listbox" aria-label="Model">
             <div className="flex items-center justify-between mb-1">
               <label className="text-xs text-dark-text-secondary">Model</label>
               {isLoadingModels && (
@@ -162,7 +174,9 @@ export default function ModelSelector() {
             {models.map((model) => (
               <button
                 key={model}
-                onPointerUp={async () => {
+                role="option"
+                aria-selected={model === selectedModel}
+                onClick={async () => {
                   setSelectedModel(model)
                   setIsOpen(false)
                   // Save model choice to conversation and as default

@@ -39,21 +39,30 @@ export default function ConversationItem({ conversation, isActive, onSelect }: P
 
   return (
     <div
-      onClick={onSelect}
-      className={`group flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer
+      className={`group flex items-center gap-2 px-2 py-1.5 rounded-lg
                   transition-colors ${
                     isActive
                       ? 'bg-dark-bg-secondary text-dark-text-primary'
                       : 'text-dark-text-secondary hover:bg-dark-bg-secondary hover:text-dark-text-primary'
                   }`}
     >
-      <MessageSquare size={14} className="flex-shrink-0" />
-      <span className="flex-1 truncate text-sm">{conversation.title}</span>
-      
-      {/* Action buttons - show on hover */}
-      <div className="hidden group-hover:flex items-center gap-1">
+      {/* Title is a real button so the row works from the keyboard */}
+      <button
+        onClick={onSelect}
+        aria-current={isActive ? 'true' : undefined}
+        className="flex-1 min-w-0 flex items-center gap-2 text-left cursor-pointer rounded
+                   focus:outline-none focus-visible:ring-2 focus-visible:ring-dark-accent-primary"
+      >
+        <MessageSquare size={14} className="flex-shrink-0" />
+        <span className="flex-1 truncate text-sm">{conversation.title}</span>
+      </button>
+
+      {/* Actions: on hover, on keyboard focus, and always on touch screens */}
+      <div className="hidden group-hover:flex group-focus-within:flex [@media(hover:none)]:flex items-center gap-1">
         <button
           onClick={handlePin}
+          aria-label={conversation.isPinned ? 'Unpin conversation' : 'Pin conversation'}
+          title={conversation.isPinned ? 'Unpin' : 'Pin'}
           className={`p-1 rounded hover:bg-dark-border ${
             conversation.isPinned ? 'text-dark-accent-primary' : ''
           }`}
@@ -62,15 +71,17 @@ export default function ConversationItem({ conversation, isActive, onSelect }: P
         </button>
         <button
           onClick={handleDelete}
+          aria-label="Delete conversation"
+          title="Delete"
           className="p-1 rounded hover:bg-dark-border text-red-400"
         >
           <Trash2 size={12} />
         </button>
       </div>
-      
-      {/* Pin indicator when not hovering */}
+
+      {/* Pin indicator while the actions are hidden */}
       {conversation.isPinned && (
-        <Pin size={12} className="text-dark-accent-primary group-hover:hidden" />
+        <Pin size={12} className="text-dark-accent-primary group-hover:hidden group-focus-within:hidden [@media(hover:none)]:hidden" />
       )}
     </div>
   )

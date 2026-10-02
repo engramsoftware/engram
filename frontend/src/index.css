@@ -21,6 +21,10 @@
   --scrollbar-thumb: #404040;
   --scrollbar-hover: #525252;
   --code-bg: #2d2d2d;
+  /* Markdown accents (text colours, so plain hex) */
+  --md-heading-accent: #a5b4fc;
+  --md-link: #818cf8;
+  --md-code: #a5b4fc;
 }
 
 html.light {
@@ -37,6 +41,9 @@ html.light {
   --scrollbar-thumb: #d1d5db;
   --scrollbar-hover: #9ca3af;
   --code-bg: #f3f4f6;
+  --md-heading-accent: #4338ca;
+  --md-link: #4f46e5;
+  --md-code: #4338ca;
 }
 
 /* Custom scrollbar */
@@ -104,3 +111,54 @@ pre {
 code {
   font-family: 'Fira Code', 'Consolas', monospace;
 }
+
+/* ============================================================
+   Markdown content (assistant messages, note previews).
+   Hand-written instead of @tailwindcss/typography: the prose-* classes
+   used here never had the plugin installed, so markdown rendered
+   unstyled (no list markers, flat headings, borderless tables).
+   Font size is inherited on purpose so messages keep their size.
+   ============================================================ */
+.md-content { line-height: 1.7; color: rgb(var(--text-primary)); overflow-wrap: anywhere; }
+.md-content > :first-child { margin-top: 0; }
+.md-content > :last-child { margin-bottom: 0; }
+.md-content p { margin: 0.625rem 0; }
+.md-content h1, .md-content h2, .md-content h3, .md-content h4 {
+  font-weight: 600; line-height: 1.3; margin: 1.5rem 0 0.75rem; color: rgb(var(--text-primary));
+}
+.md-content h1 { font-size: 1.25em; padding-bottom: 0.5rem; border-bottom: 1px solid rgb(var(--border)); }
+.md-content h2 { font-size: 1.125em; color: var(--md-heading-accent); }
+.md-content h3 { font-size: 1em; }
+.md-content h4 { font-size: 0.95em; }
+.md-content ul, .md-content ol { margin: 0.75rem 0; padding-left: 1.5rem; }
+.md-content ul { list-style: disc; }
+.md-content ol { list-style: decimal; }
+.md-content ul ul { list-style: circle; }
+.md-content li { margin: 0.25rem 0; }
+.md-content li > ul, .md-content li > ol { margin: 0.25rem 0; }
+.md-content li::marker { color: rgb(var(--text-secondary)); }
+.md-content .contains-task-list { list-style: none; padding-left: 0.25rem; }
+.md-content .task-list-item input { margin-right: 0.4rem; }
+.md-content a { color: var(--md-link); text-decoration: none; }
+.md-content a:hover { text-decoration: underline; }
+.md-content strong { font-weight: 600; color: rgb(var(--text-primary)); }
+.md-content blockquote {
+  margin: 0.75rem 0; padding-left: 1rem;
+  border-left: 3px solid rgb(var(--accent-primary) / 0.5); color: rgb(var(--text-secondary));
+}
+.md-content hr { margin: 1.5rem 0; border: 0; border-top: 1px solid rgb(var(--border)); }
+/* Inline code only: highlighted blocks render <code class="language-x"> outside a <pre> */
+.md-content :not(pre) > code:not([class*="language-"]) {
+  font-size: 0.85em; padding: 0.125rem 0.375rem; border-radius: 0.25rem;
+  background: rgb(var(--bg-secondary)); color: var(--md-code);
+}
+/* Wide tables scroll inside their own box instead of widening the page */
+.md-content table {
+  display: block; max-width: 100%; overflow-x: auto;
+  border-collapse: collapse; margin: 0.75rem 0; font-size: 0.9em;
+}
+.md-content th, .md-content td {
+  border: 1px solid rgb(var(--border)); padding: 0.5rem 0.75rem; text-align: left; vertical-align: top;
+}
+.md-content th { background: rgb(var(--bg-secondary)); font-weight: 600; }
+.md-content img { max-width: 100%; }

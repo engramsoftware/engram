@@ -126,7 +126,7 @@ export default function EmailSettings({ config, onUpdate }: Props) {
             href="https://myaccount.google.com/apppasswords"
             target="_blank"
             rel="noopener noreferrer"
-            className="text-dark-accent-primary hover:underline"
+            className="text-dark-accent-text hover:underline"
           >
             Get one
           </a>

@@ -177,7 +177,7 @@ export default function ProviderSettings({ provider, config, settings, inUse, pe
           onClick={() => setIsOpen(!isOpen)}
           aria-expanded={isOpen}
           aria-label={`${hasKey ? 'Edit' : 'Set up'} ${meta.name}`}
-          className="flex-shrink-0 px-2 py-1.5 min-h-[40px] sm:min-h-0 rounded text-xs text-dark-accent-primary hover:underline
+          className="flex-shrink-0 px-2 py-1.5 min-h-[40px] sm:min-h-0 rounded text-xs text-dark-accent-text hover:underline
                      focus:outline-none focus-visible:ring-2 focus-visible:ring-dark-accent-primary"
         >
           {hasKey ? 'Edit' : 'Set up'} {isOpen ? '▾' : '›'}
@@ -201,7 +201,7 @@ export default function ProviderSettings({ provider, config, settings, inUse, pe
               hint={config?.api_key_set
                 ? `Key saved · ${config.api_key_masked ?? ''}. Leave empty to keep it.`
                 : meta.keyUrl ? <>Get a key at <a href={meta.keyUrl} target="_blank" rel="noopener noreferrer"
-                    className="text-dark-accent-primary hover:underline">{new URL(meta.keyUrl).host}</a></> : undefined}
+                    className="text-dark-accent-text hover:underline">{new URL(meta.keyUrl).host}</a></> : undefined}
             />
           )}
 
@@ -225,7 +225,7 @@ export default function ProviderSettings({ provider, config, settings, inUse, pe
                 type="button"
                 onClick={handleRefreshModels}
                 disabled={modelState.status === 'busy'}
-                className="inline-flex items-center gap-1 px-2 py-1 min-h-[36px] sm:min-h-0 rounded text-xs text-dark-accent-primary
+                className="inline-flex items-center gap-1 px-2 py-1 min-h-[36px] sm:min-h-0 rounded text-xs text-dark-accent-text
                            hover:underline disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-dark-accent-primary"
               >
                 <RefreshCw size={12} className={modelState.status === 'busy' ? 'animate-spin' : ''} /> Refresh

@@ -114,7 +114,7 @@ export default function Neo4jSettings({ config, onUpdate }: Props) {
           href="https://neo4j.com/cloud/aura-free/"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-dark-accent-primary hover:underline"
+          className="text-dark-accent-text hover:underline"
         >
           neo4j.com/cloud/aura-free
         </a>

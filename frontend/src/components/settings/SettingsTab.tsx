@@ -167,7 +167,7 @@ export default function SettingsTab() {
         {webSearchAddinOn && (
           <InfoNote>
             The Web Search add-in (Tavily or SerpAPI) is separate from Brave Search.{' '}
-            <button type="button" onClick={() => open('addins')} className="text-dark-accent-primary hover:underline">
+            <button type="button" onClick={() => open('addins')} className="text-dark-accent-text hover:underline">
               Manage it in Add-ins
             </button>
           </InfoNote>
@@ -177,7 +177,7 @@ export default function SettingsTab() {
     email: needsSettings(s => (
       <div className="space-y-3">
         <button type="button" onClick={() => setActiveTab('notifications')}
-                className="text-xs text-dark-accent-primary hover:underline min-h-[40px] sm:min-h-0">
+                className="text-xs text-dark-accent-text hover:underline min-h-[40px] sm:min-h-0">
           View sent and scheduled emails ›
         </button>
         <EmailSettings config={s.email} onUpdate={refreshSettings} />

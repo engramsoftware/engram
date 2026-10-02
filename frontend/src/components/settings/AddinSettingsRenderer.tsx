@@ -265,7 +265,7 @@ function ProviderSection({ addinName, section, saved, onSaved }: {
                 type="button"
                 onClick={listModels}
                 disabled={listState.status === 'busy'}
-                className="inline-flex items-center gap-1 px-2 py-1.5 min-h-[40px] sm:min-h-0 rounded text-xs text-dark-accent-primary
+                className="inline-flex items-center gap-1 px-2 py-1.5 min-h-[40px] sm:min-h-0 rounded text-xs text-dark-accent-text
                            hover:underline disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-dark-accent-primary"
               >
                 <RefreshCw size={12} className={listState.status === 'busy' ? 'animate-spin' : ''} /> Refresh

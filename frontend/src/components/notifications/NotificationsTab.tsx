@@ -247,7 +247,7 @@ export default function NotificationsTab() {
               onClick={() => { setFilter(f.value); setIsLoading(true) }}
               className={`px-2.5 py-1 text-xs rounded-md transition-colors ${
                 filter === f.value
-                  ? 'bg-dark-accent-primary/20 text-dark-accent-primary font-medium'
+                  ? 'bg-dark-accent-primary/20 text-dark-accent-text font-medium'
                   : 'text-dark-text-secondary hover:text-dark-text-primary hover:bg-dark-bg-secondary'
               }`}
             >

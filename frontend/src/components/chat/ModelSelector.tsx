@@ -220,7 +220,7 @@ export default function ModelSelector() {
             <button
               type="button"
               onClick={() => { setIsOpen(false); openSettings('models') }}
-              className="text-xs text-dark-accent-primary hover:underline focus:outline-none focus-visible:underline"
+              className="text-xs text-dark-accent-text hover:underline focus:outline-none focus-visible:underline"
             >
               Manage models…
             </button>

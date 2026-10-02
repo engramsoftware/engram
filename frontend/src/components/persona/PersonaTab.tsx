@@ -129,7 +129,7 @@ export default function PersonaTab() {
                             {p.is_default && <StatusPill status="default" />}
                           </span>
                           {p.description && <span className="block text-xs text-dark-text-secondary">{p.description}</span>}
-                          <span className="block text-xs text-dark-text-secondary/90 truncate mt-1">“{p.system_prompt}”</span>
+                          <span className="block text-xs text-dark-text-secondary truncate mt-1">“{p.system_prompt}”</span>
                         </span>
                       </label>
                     </div>

@@ -60,7 +60,7 @@ export function Switch({ checked, onChange, label, disabled = false, size = 'md'
 // ------------------------------------------------------------------ Badges and status
 
 const BADGE_TONES = {
-  green: 'text-green-400 bg-green-400/10 [.light_&]:text-green-700 [.light_&]:bg-green-600/10',
+  green: 'text-green-400 bg-green-400/10 [.light_&]:text-green-800 [.light_&]:bg-green-600/10',
   blue: 'text-blue-400 bg-blue-400/10 [.light_&]:text-blue-700 [.light_&]:bg-blue-600/10',
   yellow: 'text-yellow-400 bg-yellow-400/10 [.light_&]:text-yellow-800 [.light_&]:bg-yellow-500/15',
   gray: 'text-dark-text-secondary bg-dark-bg-primary',

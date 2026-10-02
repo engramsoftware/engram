@@ -1,16 +1,57 @@
 """
 Anthropic LLM provider implementation.
-Supports Claude 3, Claude 3.5, and other Anthropic models.
+Supports current Claude models and older ones that are still served.
 """
 
 import logging
 import json
-from typing import List, Dict, Any, Optional, AsyncGenerator
+import re
+from typing import List, Dict, Any, Optional, AsyncGenerator, Tuple
 import httpx
 
 from llm.base import LLMProvider, LLMResponse, StreamChunk, ModelInfo
 
 logger = logging.getLogger(__name__)
+
+# Fallback model IDs used when no model is chosen or cached. Retired IDs return 404,
+# so check https://platform.claude.com/docs/en/about-claude/model-deprecations and
+# update these (they are the only hard-coded Claude IDs in the backend).
+ANTHROPIC_DEFAULT_MODEL = "claude-sonnet-5-5"
+# Cheap model for background work (memory extraction etc.); thinking is off by default
+ANTHROPIC_FAST_MODEL = "claude-haiku-4-5-20251001"
+
+# Room for thinking plus the answer on models that think by default: thinking counts
+# toward max_tokens, so a small cap can end the response before any text. The cap is
+# a limit, not a charge; only generated tokens are billed.
+_THINKING_MIN_MAX_TOKENS = 16000
+
+_VERSION_RE = re.compile(r"^claude-(?:(?:opus|sonnet|haiku|fable|mythos)-)?(\d+)(?:-(\d{1,2}))?(?:-|$)")
+
+
+def _claude_version(model: str) -> Optional[Tuple[int, int]]:
+    """(major, minor) from a Claude model ID, or None if it doesn't look like one.
+
+    Handles both "claude-3-5-sonnet-20241022" and "claude-sonnet-4-5-20250929";
+    a date suffix is not mistaken for a minor version ("claude-sonnet-4-20250514" is 4.0).
+    """
+    m = _VERSION_RE.match(model or "")
+    if not m:
+        return None
+    return int(m.group(1)), int(m.group(2) or 0)
+
+
+def _is_pre_4_7(model: str) -> bool:
+    """Claude 4.6 and earlier: sampling parameters are accepted and thinking is off
+    unless requested. Unknown IDs count as newer, which is the safe direction
+    (omitting temperature never errors; a bigger max_tokens cap never costs more)."""
+    version = _claude_version(model)
+    return version is not None and version <= (4, 6)
+
+
+def _thinks_by_default(model: str) -> bool:
+    """Claude 5 and later (and unrecognised IDs) think without being asked."""
+    version = _claude_version(model)
+    return version is None or version >= (5, 0)
 
 
 class AnthropicProvider(LLMProvider):
@@ -21,16 +62,13 @@ class AnthropicProvider(LLMProvider):
     
     provider_name = "anthropic"
     
-    # Known Anthropic models (API doesn't have a list endpoint)
+    # Shown only if /v1/models fails while the key still works (e.g. a gateway
+    # without a models endpoint). Current models as of 2026-10.
     KNOWN_MODELS = [
-        ModelInfo(id="claude-sonnet-4-20250514", name="Claude Sonnet 4", context_length=200000, supports_vision=True),
-        ModelInfo(id="claude-opus-4-20250514", name="Claude Opus 4", context_length=200000, supports_vision=True),
-        ModelInfo(id="claude-3-7-sonnet-20250219", name="Claude 3.7 Sonnet", context_length=200000, supports_vision=True),
-        ModelInfo(id="claude-3-5-sonnet-20241022", name="Claude 3.5 Sonnet", context_length=200000, supports_vision=True),
-        ModelInfo(id="claude-3-5-haiku-20241022", name="Claude 3.5 Haiku", context_length=200000, supports_vision=True),
-        ModelInfo(id="claude-3-opus-20240229", name="Claude 3 Opus", context_length=200000, supports_vision=True),
-        ModelInfo(id="claude-3-sonnet-20240229", name="Claude 3 Sonnet", context_length=200000, supports_vision=True),
-        ModelInfo(id="claude-3-haiku-20240307", name="Claude 3 Haiku", context_length=200000, supports_vision=True),
+        ModelInfo(id="claude-opus-5-5", name="Claude Opus 5.5", context_length=1000000, supports_vision=True),
+        ModelInfo(id="claude-sonnet-5-5", name="Claude Sonnet 5.5", context_length=1000000, supports_vision=True),
+        ModelInfo(id="claude-fable-5-1", name="Claude Fable 5.1", context_length=1000000, supports_vision=True),
+        ModelInfo(id="claude-haiku-4-5-20251001", name="Claude Haiku 4.5", context_length=200000, supports_vision=True),
     ]
     
     def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):
@@ -43,6 +81,29 @@ class AnthropicProvider(LLMProvider):
     # Delimiter injected by format_messages_with_context() to separate
     # stable (cacheable) prefix from dynamic (per-turn) context.
     _CACHE_BREAK = "<!-- CACHE_BREAK -->"
+
+    @staticmethod
+    def _build_payload(
+        model: str, messages: List[Dict[str, str]], system_content: Optional[str],
+        temperature: float, max_tokens: Optional[int],
+    ) -> Dict[str, Any]:
+        """Request body shared by generate() and stream().
+
+        Claude 4.7 and later reject temperature/top_p/top_k with a 400, so temperature
+        is only sent to older models. Models that think by default get enough
+        max_tokens for thinking plus the answer.
+        """
+        limit = max_tokens or 4096
+        if _thinks_by_default(model):
+            limit = max(limit, _THINKING_MIN_MAX_TOKENS)
+        payload: Dict[str, Any] = {"model": model, "messages": messages, "max_tokens": limit}
+        if _is_pre_4_7(model):
+            payload["temperature"] = temperature
+        if system_content:
+            # Use structured system blocks with cache_control for
+            # prompt caching (90% cost reduction on cached prefix).
+            payload["system"] = AnthropicProvider._build_cached_system(system_content)
+        return payload
 
     def _get_headers(self) -> Dict[str, str]:
         """Build request headers with authentication."""
@@ -116,12 +177,11 @@ class AnthropicProvider(LLMProvider):
                     for model_data in data.get("data", []):
                         model_id = model_data.get("id", "")
                         display_name = model_data.get("display_name", model_id)
-                        # Anthropic models typically have 200k context
-                        # All Claude 3+ models support vision
+                        # All current Claude models support vision
                         models.append(ModelInfo(
                             id=model_id,
                             name=display_name,
-                            context_length=200000,
+                            context_length=model_data.get("max_input_tokens") or 200000,
                             supports_vision=True,
                         ))
                     if models:
@@ -169,17 +229,8 @@ class AnthropicProvider(LLMProvider):
         
         system_content = "\n\n".join(system_parts) if system_parts else None
         
-        payload = {
-            "model": model,
-            "messages": chat_messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens or 4096
-        }
-        if system_content:
-            # Use structured system blocks with cache_control for
-            # prompt caching (90% cost reduction on cached prefix).
-            payload["system"] = self._build_cached_system(system_content)
-        
+        payload = self._build_payload(model, chat_messages, system_content, temperature, max_tokens)
+
         async with httpx.AsyncClient(timeout=120.0) as client:
             url = f"{self.base_url}/v1/messages"
             logger.debug(f"Anthropic request to {url} with model {model}")
@@ -191,20 +242,23 @@ class AnthropicProvider(LLMProvider):
             if response.status_code != 200:
                 error_text = response.text
                 logger.error(f"Anthropic API error {response.status_code}: {error_text}")
-                # Try to get detailed error message
+                # Raise with the API's own message when there is one
                 try:
-                    error_data = response.json()
-                    error_msg = error_data.get("error", {}).get("message", error_text)
-                    raise httpx.HTTPStatusError(
-                        f"Anthropic API error: {error_msg}",
-                        request=response.request,
-                        response=response
-                    )
-                except:
-                    response.raise_for_status()
+                    error_msg = response.json().get("error", {}).get("message", error_text)
+                except ValueError:
+                    error_msg = error_text
+                raise httpx.HTTPStatusError(
+                    f"Anthropic API error: {error_msg}",
+                    request=response.request,
+                    response=response
+                )
             data = response.json()
-        
-        content = data["content"][0]["text"] if data.get("content") else ""
+
+        # The reply can start with a thinking block (models that think by default);
+        # the answer is the text blocks
+        content = "".join(
+            block.get("text", "") for block in data.get("content") or [] if block.get("type") == "text"
+        )
         usage = data.get("usage", {})
 
         # Log prompt caching metrics when available
@@ -257,18 +311,9 @@ class AnthropicProvider(LLMProvider):
         
         system_content = "\n\n".join(system_parts) if system_parts else None
         
-        payload = {
-            "model": model,
-            "messages": chat_messages,
-            "temperature": temperature,
-            "max_tokens": max_tokens or 4096,
-            "stream": True
-        }
-        if system_content:
-            # Use structured system blocks with cache_control for
-            # prompt caching (90% cost reduction on cached prefix).
-            payload["system"] = self._build_cached_system(system_content)
-        
+        payload = self._build_payload(model, chat_messages, system_content, temperature, max_tokens)
+        payload["stream"] = True
+
         async with httpx.AsyncClient(timeout=120.0) as client:
             url = f"{self.base_url}/v1/messages"
             logger.debug(f"Anthropic stream request to {url} with model {model}")
@@ -313,8 +358,9 @@ class AnthropicProvider(LLMProvider):
                                     f"input={usage.get('input_tokens', 0)}"
                                 )
                         elif event_type == "content_block_delta":
+                            # Only text deltas are the answer (thinking and signature deltas are skipped)
                             delta = data.get("delta", {})
-                            text = delta.get("text", "")
+                            text = delta.get("text", "") if delta.get("type", "text_delta") == "text_delta" else ""
                             if text:
                                 yield StreamChunk(content=text)
                         elif event_type == "message_stop":
@@ -324,29 +370,34 @@ class AnthropicProvider(LLMProvider):
                         logger.warning(f"Failed to parse chunk: {e}")
     
     async def test_connection(self) -> bool:
-        """Test Anthropic API connectivity with a minimal request."""
+        """Check the key by listing models: free, and it doesn't depend on a model
+        ID that may be retired. A gateway without a models endpoint (404/405) is
+        checked with a 1-token message to the fast model instead."""
         if not self.api_key:
             logger.error("Anthropic connection test failed: No API key provided")
             return False
 
         try:
-            url = f"{self.base_url}/v1/messages"
-            logger.debug(f"Testing Anthropic connection to {url}")
             async with httpx.AsyncClient(timeout=30.0) as client:
-                response = await client.post(
-                    url,
+                response = await client.get(
+                    f"{self.base_url}/v1/models",
                     headers=self._get_headers(),
-                    json={
-                        "model": "claude-3-5-haiku-20241022",
-                        "messages": [{"role": "user", "content": "Hi"}],
-                        "max_tokens": 1
-                    }
+                    params={"limit": 1},
                 )
+                if response.status_code in (404, 405):
+                    response = await client.post(
+                        f"{self.base_url}/v1/messages",
+                        headers=self._get_headers(),
+                        json={
+                            "model": ANTHROPIC_FAST_MODEL,
+                            "messages": [{"role": "user", "content": "Hi"}],
+                            "max_tokens": 1,
+                        },
+                    )
                 if response.status_code in (200, 201):
                     return True
-                else:
-                    logger.error(f"Anthropic test failed with status {response.status_code}: {response.text}")
-                    return False
+                logger.error(f"Anthropic test failed with status {response.status_code}: {response.text}")
+                return False
         except Exception as e:
             logger.error(f"Anthropic connection test failed: {e}")
             return False

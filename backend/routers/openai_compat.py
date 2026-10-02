@@ -23,6 +23,7 @@ from database import get_database
 from pipeline.inlet import enrich_request
 from pipeline.outlet import process_response
 from llm.factory import create_provider
+from llm.anthropic_provider import ANTHROPIC_FAST_MODEL
 from config import get_settings
 from memory.memory_store import MemoryStore
 from memory.memory_extractor import MemoryExtractor
@@ -288,7 +289,7 @@ async def generate_sse_stream(
             negative_store = NegativeKnowledgeStore(mongo_db=db)
             # Use the active chat provider but pick cheap models to keep costs low
             _CHEAP_MODELS = {
-                "anthropic": "claude-haiku-4-5-20251001",
+                "anthropic": ANTHROPIC_FAST_MODEL,
                 "openai": "gpt-4o-mini",
             }
             ext_provider = provider_name or "lmstudio"
@@ -692,7 +693,7 @@ async def list_models() -> dict:
                 "owned_by": "openai"
             },
             {
-                "id": "claude-3-haiku-20240307",
+                "id": ANTHROPIC_FAST_MODEL,
                 "object": "model",
                 "created": int(time.time()),
                 "owned_by": "anthropic"

@@ -48,6 +48,8 @@ export default function ConversationList({ conversations }: Props) {
   const groups = groupConversations(conversations)
 
   const handleSelect = (id: string) => {
+    // Ask about unsaved Settings first, so Cancel leaves the open conversation as it was
+    if (!useUIStore.getState().requestLeave()) return
     setActiveConversation(id)
     setActiveTab('chat')
     // Close sidebar on mobile after selecting a conversation

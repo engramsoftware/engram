@@ -10,6 +10,7 @@ import { useUIStore } from '../../stores/uiStore'
 import ChatInterface from '../chat/ChatInterface'
 import SearchTab from '../search/SearchTab'
 import SettingsTab, { SETTINGS_SECTIONS } from '../settings/SettingsTab'
+import { useIsPhone } from '../settings/primitives'
 import AddinPanelRouter from '../addins/panels/AddinPanelRouter'
 import PersonaTab from '../persona/PersonaTab'
 import MemoryTab from '../memory/MemoryTab'
@@ -86,12 +87,12 @@ export default function MainContent() {
   const isNonChatTab = activeTab !== 'chat'
   // Phones open one Settings section at a time; back returns to the section list
   const inSettingsSection = activeTab === 'settings' && settingsView === 'section'
-  const isPhone = () => window.matchMedia('(max-width: 767px)').matches
-  const title = inSettingsSection && isPhone()
+  const isPhone = useIsPhone()
+  const title = inSettingsSection && isPhone
     ? SETTINGS_SECTIONS[settingsSection]?.label ?? 'Settings'
     : getTabLabel(activeTab)
   const goBack = () => {
-    if (inSettingsSection && isPhone()) setSettingsView('list')
+    if (inSettingsSection && isPhone) setSettingsView('list')
     else setActiveTab('chat')
   }
 
@@ -106,7 +107,7 @@ export default function MainContent() {
             onClick={goBack}
             className="p-1.5 rounded-lg text-dark-text-secondary hover:text-dark-text-primary
                        hover:bg-dark-bg-secondary transition-colors"
-            aria-label={inSettingsSection && isPhone() ? 'Back to Settings' : 'Back to chat'}
+            aria-label={inSettingsSection && isPhone ? 'Back to Settings' : 'Back to chat'}
           >
             <ArrowLeft size={20} />
           </button>

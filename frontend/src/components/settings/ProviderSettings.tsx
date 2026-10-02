@@ -17,7 +17,7 @@ import { providerMeta } from '../../utils/providers'
 import type { LLMSettings, ProviderConfig } from '../../types/chat.types'
 import {
   ActionButton, ActionRow, ActionStatus, Disclosure, ErrorStatus, InfoNote, PasswordField, StatusPill,
-  TextField, UnsavedPill, useAction, useDirty, type CardStatus,
+  TextField, UnsavedPill, moveRadioFocus, useAction, useDirty, type CardStatus,
 } from './primitives'
 
 /**
@@ -52,10 +52,16 @@ interface Props {
   /** Chosen while it still needs a key: the radio waits for Save */
   pending: boolean
   onPendingChange: (pending: boolean) => void
+  /** Called before a switch starts; returns a token for onActivated */
+  onActivationStart: () => number
+  /** A switch to this provider succeeded (clears any other pending pick made before it) */
+  onActivated: (token: number) => void
   onUpdate: () => void
 }
 
-export default function ProviderSettings({ provider, config, settings, inUse, pending, onPendingChange, onUpdate }: Props) {
+export default function ProviderSettings({
+  provider, config, settings, inUse, pending, onPendingChange, onActivationStart, onActivated, onUpdate,
+}: Props) {
   const meta = providerMeta(provider)
   const savedUrl = config?.base_url || ''
   const [apiKey, setApiKey] = useState('')
@@ -69,6 +75,8 @@ export default function ProviderSettings({ provider, config, settings, inUse, pe
   const [selectState, runSelect] = useAction()
   const [modelState, runModel] = useAction()
   const keyRef = useRef<HTMLInputElement>(null)
+  // Ignore a second pick while one is saving (the radio stays enabled so it keeps focus)
+  const selecting = useRef(false)
   const statusId = useId()
 
   // Sync from the backend after a refresh, one value per effect, so a refresh
@@ -85,27 +93,30 @@ export default function ProviderSettings({ provider, config, settings, inUse, pe
 
   // Radio: switch now, or (no key yet) open the row and ask for one first
   const select = () => {
-    if (inUse) return
+    if (inUse || selecting.current) return
     if (!hasKey && !apiKey) {
+      // Focus stays on the radio; the opened row says what is needed (announced as a status)
       onPendingChange(true)
       setIsOpen(true)
-      setTimeout(() => keyRef.current?.focus(), 0)
       return
     }
+    selecting.current = true
+    const token = onActivationStart()
     runSelect(async () => {
       await activateProvider(provider, settings, { apiKey, baseUrl })
       setApiKey('')
-      onPendingChange(false)
+      onActivated(token)
       onUpdate()
-    }, `Now using ${meta.name}`, `Couldn't switch to ${meta.name}`)
+    }, `Now using ${meta.name}`, `Couldn't switch to ${meta.name}`).finally(() => { selecting.current = false })
   }
 
   // Save: a pending or in-use provider is (re)activated with the typed values;
   // any other provider stays off, as only one provider is on at a time
   const handleSave = () => runSave(async () => {
     if (inUse || pending) {
+      const token = onActivationStart()
       await activateProvider(provider, settings, { apiKey, baseUrl })
-      onPendingChange(false)
+      onActivated(token)
     } else {
       await settingsApi.updateLLMSettings({
         providers: { [provider]: { enabled: false, api_key: apiKey || undefined, base_url: baseUrl || undefined } },
@@ -130,9 +141,10 @@ export default function ProviderSettings({ provider, config, settings, inUse, pe
     if (inUse) {
       await settingsApi.updateLLMSettings({ default_provider: provider, default_model: model })
     } else {
+      const token = onActivationStart()
       await activateProvider(provider, settings, { apiKey, baseUrl, model })
       setApiKey('')
-      onPendingChange(false)
+      onActivated(token)
     }
     onUpdate()
   }, inUse ? `New chats use ${friendlyModelName(model)}` : `Now using ${meta.name} · ${friendlyModelName(model)}`)
@@ -157,7 +169,7 @@ export default function ProviderSettings({ provider, config, settings, inUse, pe
             onChange={select}
             aria-label={meta.name}
             aria-describedby={statusId}
-            disabled={selectState.status === 'busy'}
+            onKeyDown={moveRadioFocus}
             className="w-4 h-4 flex-shrink-0 accent-dark-accent-primary cursor-pointer"
           />
           <span className="min-w-0">
@@ -187,9 +199,11 @@ export default function ProviderSettings({ provider, config, settings, inUse, pe
 
       {isOpen && (
         <div className="px-4 pb-4 pt-3 space-y-3 border-t border-dark-border/40">
-          {pending && (
-            <InfoNote>Add your {meta.name} API key, then Save to start using {meta.name}.</InfoNote>
-          )}
+          <div role="status">
+            {pending && (
+              <InfoNote>{meta.name} needs an API key first. Add it below, then Save to start using {meta.name}.</InfoNote>
+            )}
+          </div>
 
           {meta.needsApiKey && (
             <PasswordField

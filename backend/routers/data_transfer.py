@@ -219,6 +219,23 @@ async def import_chatgpt(
 # Export All User Data
 # ============================================================
 
+REDACTED = "[redacted]"
+
+# (section, field) pairs in llm_settings that hold encrypted secrets
+_SECRET_FIELDS = (("braveSearch", "apiKey"), ("neo4j", "password"), ("email", "password"))
+
+
+def _redact_secrets(settings_doc: dict) -> None:
+    """Replace every stored secret in an llm_settings document, in place."""
+    for prov_data in (settings_doc.get("providers") or {}).values():
+        if isinstance(prov_data, dict) and prov_data.get("apiKey"):
+            prov_data["apiKey"] = REDACTED
+    for section, field in _SECRET_FIELDS:
+        sub = settings_doc.get(section)
+        if isinstance(sub, dict) and sub.get(field):
+            sub[field] = REDACTED
+
+
 @router.get("/export")
 async def export_user_data(
     user: dict = Depends(get_current_user),
@@ -268,17 +285,13 @@ async def export_user_data(
         persona["_id"] = str(persona["_id"])
         personas.append(persona)
 
-    # Settings (redact API keys)
+    # Settings, with every stored secret removed. They are encrypted at rest,
+    # but the ciphertext is readable by anyone who also has the server's
+    # ENCRYPTION_KEY (or a default one), so it must not leave in an export.
     settings_doc = await db.llm_settings.find_one({"userId": user_id})
     if settings_doc:
         settings_doc["_id"] = str(settings_doc["_id"])
-        # Redact any API keys
-        providers = settings_doc.get("providers", {})
-        for prov_name, prov_data in providers.items():
-            if isinstance(prov_data, dict) and "apiKey" in prov_data:
-                key = prov_data["apiKey"]
-                if key and len(key) > 8:
-                    prov_data["apiKey"] = key[:4] + "..." + key[-4:]
+        _redact_secrets(settings_doc)
     else:
         settings_doc = {}
 
@@ -314,10 +327,10 @@ async def export_user_data(
             f"User: {user.get('email', 'unknown')}\n\n"
             "Files:\n"
             "  conversations.json — All conversations with messages\n"
-            "  memories.json      — Autonomous memories\n"
+            "  memories.json      — Memories you added (auto-learned memories are not included)\n"
             "  notes.json         — Notes and folders\n"
             "  personas.json      — Custom AI personas\n"
-            "  settings.json      — LLM settings (API keys redacted)\n"
+            "  settings.json      — Settings (API keys and passwords removed)\n"
         )
         zf.writestr("README.txt", readme)
 

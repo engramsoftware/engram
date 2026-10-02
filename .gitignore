@@ -51,11 +51,16 @@ backend/static/
 
 # Environment files (contain secrets)
 .env
+.env.*
 backend/.env
 
 # Keep the example
 !.env.example
 !backend/.env.example
+
+# TLS keys/certificates (e.g. key.pem/cert.pem from the SSL steps in .env.example)
+*.pem
+*.key
 
 # ===========================================
 # IDE / Editor
@@ -88,6 +93,11 @@ Desktop.ini
 # Data & Logs (ALL user data under data/ — never commit)
 # ============================================================
 data/
+
+# Stray database files outside data/
+*.db
+*.sqlite
+*.sqlite3
 
 # Log files
 *.log

@@ -53,7 +53,7 @@ export default function DonationPopup() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="relative mx-4 w-full max-w-md rounded-2xl bg-dark-bg-secondary border border-dark-border shadow-2xl overflow-hidden">
+      <div role="dialog" aria-modal="true" aria-labelledby="donation-title" className="relative mx-4 w-full max-w-md rounded-2xl bg-dark-bg-secondary border border-dark-border shadow-2xl overflow-hidden">
         {/* No X button — must use footer actions */}
 
         {/* Header with heart icon */}
@@ -61,11 +61,11 @@ export default function DonationPopup() {
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-pink-500/20 to-red-500/20 border border-pink-500/30">
             <Heart size={32} className="text-pink-400" fill="currentColor" />
           </div>
-          <h2 className="text-xl font-bold text-white mb-2">
+          <h2 id="donation-title" className="text-xl font-bold text-dark-text-primary mb-2">
             Enjoying Engram?
           </h2>
-          <p className="text-sm text-gray-400 leading-relaxed">
-            You've sent <span className="text-white font-semibold">{messageCount} messages</span> — 
+          <p className="text-sm text-dark-text-secondary leading-relaxed">
+            You've sent <span className="text-dark-text-primary font-semibold">{messageCount} messages</span> — 
             that's awesome! Engram is free and built with love. If it's been useful, 
             consider supporting development so it can keep getting better.
           </p>
@@ -89,12 +89,12 @@ export default function DonationPopup() {
           {canDismiss ? (
             <button
               onClick={dismissPopup}
-              className="text-xs text-gray-600 hover:text-gray-400 transition-colors"
+              className="text-xs text-dark-text-secondary hover:text-dark-text-primary transition-colors"
             >
               Maybe later
             </button>
           ) : (
-            <span className="text-xs text-gray-600 flex items-center gap-1">
+            <span className="text-xs text-dark-text-secondary flex items-center gap-1">
               <Clock size={12} />
               Continue in {secondsLeft}s...
             </span>
@@ -103,7 +103,7 @@ export default function DonationPopup() {
           {showDonatedButton && (
             <button
               onClick={markDonated}
-              className="text-xs text-gray-600 hover:text-gray-400 transition-colors"
+              className="text-xs text-dark-text-secondary hover:text-dark-text-primary transition-colors"
             >
               I've already donated
             </button>

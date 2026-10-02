@@ -229,7 +229,7 @@ export default function NotificationsTab() {
               {f.label}
             </button>
           ))}
-          <span className="text-[10px] text-dark-text-secondary/50 ml-auto">
+          <span className="text-[10px] text-dark-text-secondary ml-auto">
             {total} total
           </span>
         </div>
@@ -281,7 +281,7 @@ export default function NotificationsTab() {
                       {notif.body.slice(0, 120)}
                     </p>
                     <div className="flex items-center gap-3 mt-1">
-                      <span className="text-[10px] text-dark-text-secondary/60">
+                      <span className="text-[10px] text-dark-text-secondary">
                         {notif.status === 'pending' && notif.scheduled_at
                           ? `Sends ${formatTime(notif.scheduled_at)}`
                           : notif.sent_at
@@ -307,7 +307,7 @@ export default function NotificationsTab() {
                     </div>
 
                     {/* Metadata */}
-                    <div className="flex items-center gap-4 text-[10px] text-dark-text-secondary/50">
+                    <div className="flex items-center gap-4 text-[10px] text-dark-text-secondary">
                       {notif.scheduled_at && (
                         <span>Scheduled: {new Date(notif.scheduled_at).toLocaleString()}</span>
                       )}

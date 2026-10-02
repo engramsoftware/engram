@@ -90,7 +90,7 @@ export default function SettingsTab() {
                 : 'No LLM provider active'
               }
               {enabledAddins > 0 && (
-                <span className="ml-2 text-dark-text-secondary/60">
+                <span className="ml-2 text-dark-text-secondary">
                   · {enabledAddins} addin{enabledAddins !== 1 ? 's' : ''} active
                 </span>
               )}
@@ -114,8 +114,8 @@ export default function SettingsTab() {
             {cloudProviders.length > 0 && (
               <div>
                 <div className="flex items-center gap-2 mb-2">
-                  <Cloud size={12} className="text-dark-text-secondary/60" />
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-dark-text-secondary/60">
+                  <Cloud size={12} className="text-dark-text-secondary" />
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-dark-text-secondary">
                     Cloud API
                   </span>
                 </div>
@@ -137,8 +137,8 @@ export default function SettingsTab() {
             {localProviders.length > 0 && (
               <div>
                 <div className="flex items-center gap-2 mb-2">
-                  <Monitor size={12} className="text-dark-text-secondary/60" />
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-dark-text-secondary/60">
+                  <Monitor size={12} className="text-dark-text-secondary" />
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-dark-text-secondary">
                     Local
                   </span>
                 </div>
@@ -264,7 +264,7 @@ function AddinsSettings({ addins, onRefresh }: { addins: any[]; onRefresh: () =>
 
   if (addins.length === 0) {
     return (
-      <p className="text-xs text-dark-text-secondary/50 italic py-2">
+      <p className="text-xs text-dark-text-secondary italic py-2">
         No add-ins installed. Add-ins appear here when placed in the plugins directory.
       </p>
     )
@@ -308,15 +308,15 @@ function AddinsSettings({ addins, onRefresh }: { addins: any[]; onRefresh: () =>
                   }`}>
                     {addin.name}
                   </span>
-                  <span className="text-[10px] text-dark-text-secondary/50 bg-dark-bg-primary px-1.5 py-0.5 rounded">
+                  <span className="text-[10px] text-dark-text-secondary bg-dark-bg-primary px-1.5 py-0.5 rounded">
                     {TYPE_LABELS[addin.addin_type] || addin.addin_type}
                   </span>
-                  <span className="text-[10px] text-dark-text-secondary/40">
+                  <span className="text-[10px] text-dark-text-secondary">
                     v{addin.version}
                   </span>
                 </div>
                 {addin.description && (
-                  <p className="text-[11px] text-dark-text-secondary/60 truncate mt-0.5">
+                  <p className="text-[11px] text-dark-text-secondary truncate mt-0.5">
                     {addin.description}
                   </p>
                 )}
@@ -345,7 +345,7 @@ function AddinsSettings({ addins, onRefresh }: { addins: any[]; onRefresh: () =>
 
             {isExpanded && !addin.enabled && (
               <div className="px-3 pb-3 border-t border-dark-border/20">
-                <p className="text-[10px] text-dark-text-secondary/40 italic py-2">
+                <p className="text-[10px] text-dark-text-secondary italic py-2">
                   Enable this add-in to configure its settings.
                 </p>
               </div>

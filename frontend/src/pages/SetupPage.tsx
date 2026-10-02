@@ -330,7 +330,7 @@ export default function SetupPage() {
                 placeholder="John"
                 required
                 className="w-full bg-dark-bg-secondary border border-dark-border rounded-lg
-                           px-4 py-2.5 text-dark-text-primary placeholder-dark-text-secondary/50
+                           px-4 py-2.5 text-dark-text-primary placeholder-dark-text-secondary/70
                            focus:outline-none focus:border-indigo-500 transition-colors"
               />
             </div>
@@ -344,7 +344,7 @@ export default function SetupPage() {
                 placeholder="you@example.com"
                 required
                 className="w-full bg-dark-bg-secondary border border-dark-border rounded-lg
-                           px-4 py-2.5 text-dark-text-primary placeholder-dark-text-secondary/50
+                           px-4 py-2.5 text-dark-text-primary placeholder-dark-text-secondary/70
                            focus:outline-none focus:border-indigo-500 transition-colors"
               />
             </div>
@@ -359,7 +359,7 @@ export default function SetupPage() {
                 required
                 minLength={8}
                 className="w-full bg-dark-bg-secondary border border-dark-border rounded-lg
-                           px-4 py-2.5 text-dark-text-primary placeholder-dark-text-secondary/50
+                           px-4 py-2.5 text-dark-text-primary placeholder-dark-text-secondary/70
                            focus:outline-none focus:border-indigo-500 transition-colors"
               />
             </div>
@@ -507,7 +507,7 @@ export default function SetupPage() {
                     onChange={e => setApiKey(e.target.value)}
                     placeholder={provider === 'openai' ? 'sk-...' : 'sk-ant-...'}
                     className="w-full bg-dark-bg-secondary border border-dark-border rounded-lg
-                               px-4 py-2.5 text-dark-text-primary placeholder-dark-text-secondary/50
+                               px-4 py-2.5 text-dark-text-primary placeholder-dark-text-secondary/70
                                focus:outline-none focus:border-indigo-500 transition-colors font-mono text-sm"
                   />
                 </div>
@@ -578,7 +578,7 @@ export default function SetupPage() {
         )}
 
         {/* Footer */}
-        <p className="text-center text-xs text-dark-text-secondary/50 mt-8">
+        <p className="text-center text-xs text-dark-text-secondary mt-8">
           All data stays on your machine. Non-commercial use only.<br />
           &copy; 2025-2026 Engram Software. See LICENSE for full terms.
         </p>

@@ -148,7 +148,7 @@ export default function BraveSearchSettings({ config, onUpdate }: Props) {
               onChange={(e) => setApiKey(e.target.value)}
               placeholder={config?.api_key_set ? '••••••••••••' : 'BSA...'}
               className="w-full bg-dark-bg-primary border border-dark-border rounded-md
-                         px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/40
+                         px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/70
                          focus:outline-none focus:border-dark-accent-primary/50 transition-colors"
             />
             {config?.api_key_masked && (

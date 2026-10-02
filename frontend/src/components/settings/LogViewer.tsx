@@ -219,7 +219,7 @@ export default function LogViewer() {
               className={`text-[10px] px-2 py-1 rounded font-medium transition-colors ${
                 isActive
                   ? `${style.bg} ${style.text} ring-1 ring-current`
-                  : 'text-dark-text-secondary/60 hover:text-dark-text-secondary'
+                  : 'text-dark-text-secondary hover:text-dark-text-secondary'
               }`}
               title={`${isActive ? 'Show all' : `Filter to ${lvl}+`}`}
             >
@@ -233,20 +233,20 @@ export default function LogViewer() {
 
         {/* Search */}
         <div className="relative flex-1 min-w-[120px] max-w-[250px]">
-          <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-dark-text-secondary/40" />
+          <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-dark-text-secondary" />
           <input
             type="text"
             value={searchFilter}
             onChange={(e) => setSearchFilter(e.target.value)}
             placeholder="Filter logs..."
             className="w-full pl-7 pr-2 py-1 bg-dark-bg-primary border border-dark-border/50 rounded
-                       text-[11px] text-dark-text-primary placeholder:text-dark-text-secondary/30
+                       text-[11px] text-dark-text-primary placeholder:text-dark-text-secondary/70
                        focus:outline-none focus:border-dark-accent-primary/40 transition-colors"
           />
         </div>
 
         {/* Status */}
-        <div className="flex items-center gap-1.5 ml-auto text-[10px] text-dark-text-secondary/50">
+        <div className="flex items-center gap-1.5 ml-auto text-[10px] text-dark-text-secondary">
           {!isPaused && (
             <span className="flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
@@ -268,7 +268,7 @@ export default function LogViewer() {
             <Loader2 size={16} className="animate-spin text-dark-text-secondary" />
           </div>
         ) : logs.length === 0 ? (
-          <div className="flex items-center justify-center py-8 text-dark-text-secondary/40 text-xs">
+          <div className="flex items-center justify-center py-8 text-dark-text-secondary text-xs">
             No log entries {levelFilter && `at ${levelFilter} level`}
           </div>
         ) : (
@@ -286,7 +286,7 @@ export default function LogViewer() {
                 }`}
               >
                 {/* Timestamp */}
-                <span className="text-dark-text-secondary/40 flex-shrink-0 w-[85px]">
+                <span className="text-dark-text-secondary flex-shrink-0 w-[85px]">
                   {formatTimestamp(entry.timestamp)}
                 </span>
                 {/* Level */}

@@ -133,19 +133,19 @@ function SourceCard({ source, index }: { source: WebSource; index: number }) {
                            group-hover/link:text-indigo-400 transition-colors line-clamp-2">
               {source.title || domain}
             </h4>
-            <ExternalLink size={11} className="flex-shrink-0 mt-1 text-dark-text-secondary/40
+            <ExternalLink size={11} className="flex-shrink-0 mt-1 text-dark-text-secondary
                                                 group-hover/link:text-indigo-400 transition-colors" />
           </a>
 
           {/* Domain + age row */}
           <div className="flex items-center gap-2 mt-1">
-            <span className="text-[11px] text-dark-text-secondary/70 truncate">
+            <span className="text-[11px] text-dark-text-secondary truncate">
               {domain}
             </span>
             {source.age && (
               <>
-                <span className="text-dark-text-secondary/30">·</span>
-                <span className="text-[11px] text-dark-text-secondary/50 flex-shrink-0">
+                <span className="text-dark-text-secondary">·</span>
+                <span className="text-[11px] text-dark-text-secondary flex-shrink-0">
                   {source.age}
                 </span>
               </>
@@ -154,7 +154,7 @@ function SourceCard({ source, index }: { source: WebSource; index: number }) {
 
           {/* Description */}
           {source.description && (
-            <p className="mt-1.5 text-xs text-dark-text-secondary/80 leading-relaxed line-clamp-3">
+            <p className="mt-1.5 text-xs text-dark-text-secondary leading-relaxed line-clamp-3">
               {source.description}
             </p>
           )}

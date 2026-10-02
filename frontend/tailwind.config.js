@@ -9,18 +9,18 @@ export default {
       colors: {
         dark: {
           bg: {
-            primary: 'var(--bg-primary)',
-            secondary: 'var(--bg-secondary)',
-            tertiary: 'var(--bg-tertiary)',
+            primary: 'rgb(var(--bg-primary) / <alpha-value>)',
+            secondary: 'rgb(var(--bg-secondary) / <alpha-value>)',
+            tertiary: 'rgb(var(--bg-tertiary) / <alpha-value>)',
           },
           text: {
-            primary: 'var(--text-primary)',
-            secondary: 'var(--text-secondary)',
+            primary: 'rgb(var(--text-primary) / <alpha-value>)',
+            secondary: 'rgb(var(--text-secondary) / <alpha-value>)',
           },
-          border: 'var(--border)',
+          border: 'rgb(var(--border) / <alpha-value>)',
           accent: {
-            primary: 'var(--accent-primary)',
-            hover: 'var(--accent-hover)',
+            primary: 'rgb(var(--accent-primary) / <alpha-value>)',
+            hover: 'rgb(var(--accent-hover) / <alpha-value>)',
           }
         }
       }

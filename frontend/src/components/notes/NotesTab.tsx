@@ -340,7 +340,7 @@ export default function NotesTab() {
                   className={`p-1.5 rounded transition-colors
                              ${isDirty
                                ? 'text-dark-accent-primary hover:bg-dark-bg-primary'
-                               : 'text-dark-text-secondary/30 cursor-not-allowed'
+                               : 'text-dark-text-secondary cursor-not-allowed'
                              }`}
                   title="Save (Ctrl+S)"
                 >

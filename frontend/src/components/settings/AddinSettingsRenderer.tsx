@@ -377,7 +377,7 @@ function AddinProviderCard({ providerKey, meta, addinName, isActive, baseUrl, ap
                 onChange={e => setLocalApiKey(e.target.value)}
                 placeholder="sk-..."
                 className="w-full bg-dark-bg-primary border border-dark-border rounded-md
-                           px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/40
+                           px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/70
                            focus:outline-none focus:border-dark-accent-primary/50 transition-colors"
               />
             </div>
@@ -394,7 +394,7 @@ function AddinProviderCard({ providerKey, meta, addinName, isActive, baseUrl, ap
               onChange={e => setLocalBaseUrl(e.target.value)}
               placeholder={meta.defaultUrl}
               className="w-full bg-dark-bg-primary border border-dark-border rounded-md
-                         px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/40
+                         px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/70
                          focus:outline-none focus:border-dark-accent-primary/50 transition-colors"
             />
           </div>
@@ -435,7 +435,7 @@ function AddinProviderCard({ providerKey, meta, addinName, isActive, baseUrl, ap
                 )}
               </div>
             ) : (
-              <p className="text-xs text-dark-text-secondary/50 italic">
+              <p className="text-xs text-dark-text-secondary italic">
                 No models detected — click refresh
               </p>
             )}
@@ -598,7 +598,7 @@ function FieldRenderer({ field, value, onChange }: {
             onChange={e => onChange(e.target.value)}
             placeholder={field.placeholder}
             className="w-full bg-dark-bg-primary border border-dark-border rounded-md
-                       px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/40
+                       px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/70
                        focus:outline-none focus:border-dark-accent-primary/50 transition-colors"
           />
         </div>

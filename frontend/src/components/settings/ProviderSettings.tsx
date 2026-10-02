@@ -224,7 +224,7 @@ export default function ProviderSettings({ provider, config, defaultModel, onUpd
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder={config?.api_key_set ? '••••••••••••' : 'sk-...'}
                 className="w-full bg-dark-bg-primary border border-dark-border rounded-md
-                           px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/40
+                           px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/70
                            focus:outline-none focus:border-dark-accent-primary/50 transition-colors"
               />
               {config?.api_key_masked && (
@@ -247,7 +247,7 @@ export default function ProviderSettings({ provider, config, defaultModel, onUpd
                 onChange={(e) => setBaseUrl(e.target.value)}
                 placeholder={meta.defaultUrl}
                 className="w-full bg-dark-bg-primary border border-dark-border rounded-md
-                           px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/40
+                           px-3 py-1.5 text-sm text-dark-text-primary placeholder:text-dark-text-secondary/70
                            focus:outline-none focus:border-dark-accent-primary/50 transition-colors"
               />
             </div>
@@ -299,7 +299,7 @@ export default function ProviderSettings({ provider, config, defaultModel, onUpd
                 )}
               </div>
             ) : (
-              <p className="text-xs text-dark-text-secondary/50 italic">
+              <p className="text-xs text-dark-text-secondary italic">
                 No models detected — click refresh
               </p>
             )}

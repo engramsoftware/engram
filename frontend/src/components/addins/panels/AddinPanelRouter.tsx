@@ -33,11 +33,11 @@ export default function AddinPanelRouter({ addinId, addinName }: Props) {
   if (!Panel) {
     return (
       <div className="h-full flex flex-col items-center justify-center gap-3 p-6">
-        <Puzzle size={40} className="text-dark-text-secondary/40" />
+        <Puzzle size={40} className="text-dark-text-secondary" />
         <p className="text-dark-text-secondary text-sm text-center">
           <strong>{addinName}</strong> is enabled but has no panel UI yet.
         </p>
-        <p className="text-dark-text-secondary/60 text-xs">
+        <p className="text-dark-text-secondary text-xs">
           A developer needs to register a panel component for this add-in.
         </p>
       </div>

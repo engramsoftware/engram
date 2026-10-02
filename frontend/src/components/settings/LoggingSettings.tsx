@@ -186,7 +186,7 @@ export default function LoggingSettings() {
           <div className="flex items-center justify-between mb-2">
             <div className="flex-1 min-w-0">
               <h3 className="text-sm font-medium text-dark-text-primary">{group.name}</h3>
-              <p className="text-[10px] text-dark-text-secondary/60 truncate mt-0.5">
+              <p className="text-[10px] text-dark-text-secondary truncate mt-0.5">
                 {group.modules.join(', ')}
               </p>
             </div>
@@ -202,7 +202,7 @@ export default function LoggingSettings() {
                 className={`px-2.5 py-1 rounded text-[11px] font-medium border transition-all ${
                   group.level === level
                     ? LEVEL_COLORS[level]
-                    : 'bg-dark-bg-primary/50 border-transparent text-dark-text-secondary/50 hover:border-dark-border/50 hover:text-dark-text-secondary'
+                    : 'bg-dark-bg-primary/50 border-transparent text-dark-text-secondary hover:border-dark-border/50 hover:text-dark-text-secondary'
                 }`}
               >
                 {level}

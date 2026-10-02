@@ -575,7 +575,8 @@ class Addin(AddinBase):
 
         provider = payload.get("provider", "auto")
         base_url = payload.get("base_url", "").rstrip("/")
-        api_key = payload.get("api_key", "")
+        # The form never holds the saved key (see get_settings_schema)
+        api_key = payload.get("api_key") or (self.config or {}).get("settings", {}).get("llm_api_key", "")
 
         # Build URL list: user-provided first, then Docker-reachable defaults
         if provider in ("auto", "lmstudio", "ollama"):
@@ -734,12 +735,15 @@ class Addin(AddinBase):
                             "show_when": {"llm_provider": ["lmstudio", "ollama"]},
                         },
                         {
+                            # The saved key is never sent back (these settings are
+                            # shared by every user); an empty value keeps it
                             "key": "llm_api_key",
                             "label": "API Key",
                             "type": "password",
-                            "placeholder": "sk-...",
+                            "placeholder": "Saved; leave empty to keep it" if settings.get("llm_api_key") else "sk-...",
                             "default": "",
-                            "value": settings.get("llm_api_key", ""),
+                            "value": "",
+                            "is_set": bool(settings.get("llm_api_key")),
                             "show_when": {"llm_provider": ["openai", "anthropic"]},
                         },
                         {
@@ -834,6 +838,9 @@ class Addin(AddinBase):
                        "min_confidence_to_apply", "eval_after_every_n",
                        "max_skills", "llm_provider", "llm_base_url",
                        "llm_api_key", "llm_model"):
+                # The schema never returns the saved key, so an empty one means "keep"
+                if key == "llm_api_key" and not value:
+                    continue
                 settings[key] = value
                 changed.append(key)
 

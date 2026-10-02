@@ -24,8 +24,9 @@ async def setup_status() -> dict:
         needsSetup: True if no users exist (first run).
         userCount: Number of registered users.
     """
+    from routers.auth import count_real_users
     db = get_database()
-    user_count = await db.users.count_documents({})
+    user_count = await count_real_users(db)
     return {
         "needsSetup": user_count == 0,
         "userCount": user_count,

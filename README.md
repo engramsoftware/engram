@@ -272,6 +272,8 @@ Extensible plugin architecture with built-in plugins:
 
 - **Most data stays on your machine.** SQLite and ChromaDB store everything locally. The exception is the **optional** Neo4j Aura knowledge graph, which is a cloud service — if you enable it, entity and relationship data is stored on Neo4j's servers.
 - **Private network only.** Blocks all public IP access by default (LAN and VPN only).
+- **Accounts and admins.** The first account you create is the admin. There is no open sign-up: admins add people in Settings › Users. Only admins manage accounts. Changing a password signs out that account's other sessions, and Settings › Account has "Sign out everywhere".
+- **Forgotten password.** An admin sets a new one in Settings › Users. If you're the only admin, run `docker exec -it engram python reset_password.py you@example.com` (add `--make-admin` to restore admin rights).
 - **API keys encrypted at rest** using Fernet symmetric encryption (AES-128-CBC).
 - **Rate limiting** on authentication endpoints to prevent brute force attacks.
 - **Security headers** (HSTS, X-Frame-Options, CSP) on all responses.

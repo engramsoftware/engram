@@ -37,16 +37,17 @@ export const SETTINGS_SECTIONS: Record<string, SectionMeta> = {
   email: { label: 'Email', icon: <Mail size={16} />, description: 'Engram can email you reminders, summaries and alerts.' },
   addins: { label: 'Add-ins', icon: <Puzzle size={16} />, description: 'Extra abilities for Engram.' },
   account: { label: 'Account', icon: <UserCircle size={16} />, description: 'Your profile, password and how Engram looks.' },
-  users: { label: 'Users', icon: <Users size={16} />, description: 'People who can sign in to this Engram. Everyone here can manage accounts.' },
+  users: { label: 'Users', icon: <Users size={16} />, description: 'People who can sign in to this Engram. Only admins see this section.' },
   data: { label: 'Data & logs', icon: <Database size={16} />, description: 'Export or import your data, and server diagnostics.' },
 }
 
-const GROUPS: { label: string; ids: string[] }[] = [
+const ALL_GROUPS: { label: string; ids: string[] }[] = [
   { label: 'Assistant', ids: ['models', 'web', 'email', 'addins'] },
   { label: 'You', ids: ['account'] },
   { label: 'Server', ids: ['users', 'data'] },
 ]
-const ORDER = GROUPS.flatMap(g => g.ids)
+/** Sections only admins can open */
+const ADMIN_ONLY = new Set(['users'])
 
 export default function SettingsTab() {
   const [settings, setSettings] = useState<LLMSettings | null>(null)
@@ -55,6 +56,11 @@ export default function SettingsTab() {
   const [retrying, setRetrying] = useState(false)
   const [userCount, setUserCount] = useState<number | null>(null)
   const { settingsSection, setSettingsSection, settingsView, setSettingsView, setActiveTab } = useUIStore()
+  const isAdmin = useAuthStore(s => !!s.user?.is_admin)
+  const GROUPS = ALL_GROUPS
+    .map(g => ({ ...g, ids: g.ids.filter(id => isAdmin || !ADMIN_ONLY.has(id)) }))
+    .filter(g => g.ids.length > 0)
+  const ORDER = GROUPS.flatMap(g => g.ids)
   const section = ORDER.includes(settingsSection) ? settingsSection : 'models'
   const isPhone = useIsPhone()
   // A section is "active" (fetches, streams logs) only while it is on screen
@@ -134,7 +140,7 @@ export default function SettingsTab() {
   const description = (id: string) => {
     if (id === 'addins') return `${SETTINGS_SECTIONS.addins.description} ${addinsOn} of ${addins.length} on.`
     if (id === 'users' && userCount !== null) {
-      return `${userCount} ${userCount === 1 ? 'person' : 'people'} can sign in to this Engram. Everyone here can manage accounts.`
+      return `${userCount} ${userCount === 1 ? 'person' : 'people'} can sign in to this Engram. Admins manage accounts; only admins see this section.`
     }
     return SETTINGS_SECTIONS[id].description
   }

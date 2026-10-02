@@ -9,14 +9,21 @@
 import { useState, useEffect } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuthStore } from './stores/authStore'
+import { authApi } from './services/api'
 import Layout from './components/layout/Layout'
 import LoginPage from './pages/LoginPage'
-import RegisterPage from './pages/RegisterPage'
 import SetupPage from './pages/SetupPage'
 import ForgotPasswordPage from './pages/ForgotPasswordPage'
 
 function App() {
   const { isAuthenticated } = useAuthStore()
+
+  // Refresh the signed-in user (role, name) from the server; a session that was
+  // ended elsewhere gets a 401 here and is signed out
+  useEffect(() => {
+    if (!isAuthenticated) return
+    authApi.getMe().then(me => useAuthStore.getState().updateUser(me)).catch(() => {})
+  }, [isAuthenticated])
   const [needsSetup, setNeedsSetup] = useState<boolean | null>(null)
 
   // Check if this is a first-run (no users exist)
@@ -50,10 +57,8 @@ function App() {
           path="/login" 
           element={isAuthenticated ? <Navigate to="/" /> : needsSetup ? <Navigate to="/setup" /> : <LoginPage />} 
         />
-        <Route 
-          path="/register" 
-          element={isAuthenticated ? <Navigate to="/" /> : <RegisterPage />} 
-        />
+        {/* Sign-up is closed once an account exists (the first one is made in /setup) */}
+        <Route path="/register" element={<Navigate to={needsSetup ? '/setup' : '/login'} />} />
         <Route
           path="/forgot-password"
           element={isAuthenticated ? <Navigate to="/" /> : <ForgotPasswordPage />}

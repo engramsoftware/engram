@@ -88,6 +88,14 @@ async def lifespan(app: FastAPI):
 
     await connect_to_mongodb()
 
+    # Roles: an install from before roles existed gets its first account as admin
+    try:
+        from database import get_database as _get_db
+        from routers.auth import ensure_admin_exists
+        await ensure_admin_exists(_get_db())
+    except Exception as e:
+        logger.warning(f"Admin check skipped: {e}")
+
     # Seed built-in personas (tutor, meal planner, budget assistant)
     try:
         from seed_personas import seed_built_in_personas

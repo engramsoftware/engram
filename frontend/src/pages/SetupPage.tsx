@@ -128,10 +128,10 @@ export default function SetupPage() {
           providers: {
             [provider]: {
               enabled: true,
-              ...(apiKey ? { apiKey } : {}),
+              ...(apiKey ? { api_key: apiKey } : {}),
             },
           },
-          defaultProvider: provider,
+          default_provider: provider,
         }
 
         const res = await fetch('/api/settings/llm', {

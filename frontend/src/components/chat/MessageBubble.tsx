@@ -173,6 +173,16 @@ export default function MessageBubble({ message, isThinking = false }: Props) {
                       </figure>
                     )
                   },
+                  pre({ node, children, ...props }) {
+                    // Fenced blocks with a language render their own framed container
+                    // (see `code` below); skip the <pre> wrapper so they aren't boxed twice.
+                    const first = node?.children[0]
+                    const cls = first && first.type === 'element' ? first.properties?.className : undefined
+                    if (Array.isArray(cls) && cls.some(c => String(c).startsWith('language-'))) {
+                      return <>{children}</>
+                    }
+                    return <pre {...props}>{children}</pre>
+                  },
                   code({ className, children, ...props }) {
                     const match = /language-(\w+)/.exec(className || '')
                     const codeStr = String(children).replace(/\n$/, '')

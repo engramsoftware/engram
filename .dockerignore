@@ -21,6 +21,20 @@ atlas_installer.iss
 
 # Data (mounted as volume, not baked into image)
 data/
+**/data
+**/*.db
+**/*.sqlite
+**/*.sqlite3
+**/*.log
+**/__pycache__
+
+# Secrets: a baked-in .env would be reused by every container from this image
+# (the entrypoint only generates secrets when /app/.env is missing)
+**/.env
+**/.env.*
+!**/.env.example
+**/*.pem
+**/*.key
 
 # Frontend node_modules (npm ci runs in Docker)
 frontend/node_modules

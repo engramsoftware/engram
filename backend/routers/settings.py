@@ -900,10 +900,19 @@ async def stream_logs(
     _log_subscribers.add(queue)
 
     async def event_generator():
+        last_check = time.monotonic()
         try:
             # Send a keepalive comment so the connection is established
             yield ": connected\n\n"
             while True:
+                # Re-check the session every 30s: a demoted admin or an ended
+                # session stops receiving logs
+                if time.monotonic() - last_check >= 30:
+                    last_check = time.monotonic()
+                    still = await user_for_session_token(token)
+                    if not still or not still["is_admin"]:
+                        yield "event: end\ndata: {}\n\n"
+                        return
                 try:
                     entry = await asyncio.wait_for(queue.get(), timeout=30.0)
                     # Apply level filter

@@ -62,6 +62,9 @@ class AddinBase(ABC):
     description: str = ""
     addin_type: AddinType = AddinType.TOOL
     permissions: List[str] = []
+    # Actions (handle_action) that change state shared by every user, or make the
+    # server contact a URL from the request. Only admins may call them.
+    admin_actions: frozenset = frozenset()
     
     def __init__(self, config: Dict[str, Any] = None):
         """

@@ -13,7 +13,8 @@ Usage (without Docker), from the backend folder:
     python reset_password.py you@example.com
 
 The new password is typed twice (hidden). The account is signed out
-everywhere. --make-admin also gives the account admin rights.
+everywhere and its API tokens are revoked. --make-admin also gives the
+account admin rights.
 """
 
 import argparse
@@ -23,8 +24,6 @@ import os
 import sys
 
 from config import SQLITE_DB_PATH
-from sqlite_db import SQLiteDatabase, ObjectId
-from routers.auth import hash_password
 
 
 def _run_as_database_owner() -> None:
@@ -34,11 +33,18 @@ def _run_as_database_owner() -> None:
         return
     st = SQLITE_DB_PATH.stat()
     if st.st_uid != 0:
+        os.setgroups([])
         os.setgid(st.st_gid)
         os.setuid(st.st_uid)
 
 
 async def _reset(email: str, password: str, make_admin: bool) -> int:
+    # Imported here, after switching user, so nothing is created as root.
+    # bcrypt directly (same scheme as routers.auth.hash_password): importing the
+    # routers package would load the whole app.
+    import bcrypt
+    from sqlite_db import SQLiteDatabase, ObjectId
+
     db = SQLiteDatabase(str(SQLITE_DB_PATH))
     await db.connect()
     try:
@@ -46,14 +52,16 @@ async def _reset(email: str, password: str, make_admin: bool) -> int:
         if not user or "passwordHash" not in user:
             print(f"No account with the email {email}.", file=sys.stderr)
             return 1
-        update = {"$set": {"passwordHash": hash_password(password)}, "$inc": {"tokenVersion": 1}}
+        password_hash = bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        update = {"$set": {"passwordHash": password_hash}, "$inc": {"tokenVersion": 1}}
         if make_admin:
             update["$set"]["isAdmin"] = True
         await db.users.update_one({"_id": ObjectId(str(user["_id"]))}, update)
+        await db.api_tokens.delete_many({"userId": str(user["_id"])})
     finally:
         await db.close()
     print(f"Password reset for {email}." + (" It is now an admin." if make_admin else "")
-          + " It has been signed out everywhere.")
+          + " It has been signed out everywhere and its API tokens were revoked.")
     return 0
 
 

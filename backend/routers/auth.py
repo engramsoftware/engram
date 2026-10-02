@@ -124,6 +124,13 @@ async def get_current_user(
     return user
 
 
+async def end_sessions(db, user_id: str) -> None:
+    """Sign an account out everywhere: void its login tokens and revoke its API
+    tokens (a stolen session could otherwise have minted one that lives on)."""
+    await db.users.update_one({"_id": ObjectId(user_id)}, {"$inc": {"tokenVersion": 1}})
+    await db.api_tokens.delete_many({"userId": user_id})
+
+
 async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:
     """Dependency for endpoints only an admin may use."""
     if not current_user.get("is_admin"):
@@ -198,9 +205,10 @@ async def login(credentials: UserLogin) -> TokenResponse:
 
 @router.post("/logout-all")
 async def logout_everywhere(current_user: dict = Depends(get_current_user)) -> dict:
-    """Sign out every session of the current user, including this one."""
+    """Sign out every session of the current user, including this one, and
+    revoke their API tokens."""
     db = get_database()
-    await db.users.update_one({"_id": ObjectId(current_user["id"])}, {"$inc": {"tokenVersion": 1}})
+    await end_sessions(db, current_user["id"])
     logger.info(f"Signed out everywhere: {current_user['email']}")
     return {"detail": "Signed out everywhere"}
 

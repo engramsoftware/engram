@@ -16,7 +16,7 @@ from bson import ObjectId
 from pydantic import BaseModel, EmailStr, Field
 
 from database import get_database
-from routers.auth import create_access_token, get_current_user, hash_password, require_admin, verify_password
+from routers.auth import create_access_token, end_sessions, get_current_user, hash_password, require_admin, verify_password
 from models.user import UserResponse, user_response
 
 logger = logging.getLogger(__name__)
@@ -133,10 +133,9 @@ async def update_my_profile(
             detail="No fields to update",
         )
 
-    update: dict = {"$set": update_fields}
+    await db.users.update_one({"_id": ObjectId(user_id)}, {"$set": update_fields})
     if data.password is not None:
-        update["$inc"] = {"tokenVersion": 1}
-    await db.users.update_one({"_id": ObjectId(user_id)}, update)
+        await end_sessions(db, user_id)
 
     # Return fresh user doc (and a token for this session after a password change)
     user = await db.users.find_one({"_id": ObjectId(user_id)})
@@ -195,10 +194,9 @@ async def update_user(
             detail="No fields to update",
         )
 
-    update: dict = {"$set": update_fields}
+    await db.users.update_one({"_id": ObjectId(user_id)}, {"$set": update_fields})
     if data.password is not None:
-        update["$inc"] = {"tokenVersion": 1}
-    await db.users.update_one({"_id": ObjectId(user_id)}, update)
+        await end_sessions(db, user_id)
     logger.info(f"User {target['email']} updated by {current_user['email']}: {sorted(update_fields)}")
 
     user = await db.users.find_one({"_id": ObjectId(user_id)})
@@ -271,6 +269,7 @@ async def delete_user(
     result = await db.users.delete_one({"_id": ObjectId(user_id)})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="User not found")
+    await db.api_tokens.delete_many({"userId": user_id})
 
     logger.info(f"User {user_id} deleted by {current_user['email']}")
     return {"detail": "User deleted"}

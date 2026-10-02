@@ -131,7 +131,10 @@ export default function ApiTokensCard() {
         </ActionButton>
         <ActionStatus state={createState} />
       </ActionRow>
-      <InfoNote>Anyone with a token can use Engram as you. Revoke tokens you no longer use.</InfoNote>
+      <InfoNote>
+        Anyone with a token can use Engram as you. Revoke tokens you no longer use. Changing your password or
+        signing out everywhere revokes all of them.
+      </InfoNote>
     </section>
   )
 }

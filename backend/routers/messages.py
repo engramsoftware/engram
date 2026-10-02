@@ -1891,6 +1891,17 @@ async def send_message(
             await stream_queue.put(None)
             return
 
+        # Config integrity check on the outbound reply, before anything else
+        # (add-in interceptors included) sees it. A withheld reply also replaces
+        # the streamed text on screen.
+        try:
+            from search.config_validator import check_output_integrity, WITHHELD_REPLY
+            full_response = check_output_integrity(full_response, context="llm_stream_response")
+            if full_response == WITHHELD_REPLY:
+                await stream_queue.put(f"data: {json.dumps({'replace': WITHHELD_REPLY})}\n\n")
+        except Exception as _cv_err:
+            logger.warning(f"Output integrity check failed: {_cv_err}")
+
         # ── Addin interceptors: after_llm ──────────────────────
         # Let interceptors (e.g. Skill Voyager) evaluate the response,
         # update skill confidence, and extract new skills.
@@ -1911,17 +1922,6 @@ async def send_message(
 
         # ── Post-stream: save message + run outlet (always runs) ──
         try:
-            # Config integrity check on outbound response
-            try:
-                from search.config_validator import check_output_integrity
-                full_response = check_output_integrity(
-                    full_response, context="llm_stream_response"
-                )
-            except SystemExit:
-                raise
-            except Exception:
-                pass
-
             # Self-reflective validation: check response against retrieved context
             # Uses a cheap LLM call to catch hallucinations before the user sees them.
             # Skipped when the user turns off response validation in Settings.

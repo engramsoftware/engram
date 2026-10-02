@@ -53,7 +53,7 @@ export default function AccountSection() {
     if (res.access_token) setToken(res.access_token)
     setPassword('')
     setCurrentPassword('')
-  }, 'Password changed. Your other sessions were signed out.', "Couldn't change the password")
+  }, 'Password changed. Your other sessions were signed out and your API tokens revoked.', "Couldn't change the password")
 
   const signOut = () => { if (requestLeave()) logout() }
   const signOutEverywhere = () => runEverywhere(async () => {
@@ -135,7 +135,7 @@ export default function AccountSection() {
         <span className="flex-1" />
         <ConfirmButton
           label="Sign out everywhere"
-          prompt="Sign out on every device, including this one?"
+          prompt="Sign out on every device, including this one? Your API tokens are revoked too."
           confirmLabel="Sign out everywhere"
           busy={everywhereState.status === 'busy'}
           onConfirm={signOutEverywhere}

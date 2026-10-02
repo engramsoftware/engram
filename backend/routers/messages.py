@@ -18,7 +18,7 @@ from database import get_database
 from routers.auth import get_current_user
 from models.message import MessageCreate, MessageResponse
 from llm.factory import create_provider
-from llm.anthropic_provider import ANTHROPIC_DEFAULT_MODEL, ANTHROPIC_FAST_MODEL
+from llm.anthropic_provider import ANTHROPIC_DEFAULT_MODEL
 from search.hybrid_wrapper import HybridSearchWrapper
 from search.search_interface import SearchFilters
 from utils.encryption import decrypt_api_key
@@ -2068,21 +2068,12 @@ async def send_message(
                 logger.info(f"Outlet pipeline starting for user {user_id}")
                 try:
                     memory_store, negative_store = _build_autonomous_stores(db)
-                    # Use the active chat provider for memory extraction
-                    # but pick the cheapest model to keep costs low
-                    _CHEAP_MODELS = {
-                        "anthropic": ANTHROPIC_FAST_MODEL,
-                        "openai": "gpt-4o-mini",
-                    }
-                    provider_for_extraction = provider_name or "lmstudio"
-                    extractor_model = _CHEAP_MODELS.get(provider_name, model_name)
-
-                    # Pass the decrypted API key so extractors don't rely on .env.
-                    # Only pass base_url for local providers (lmstudio/ollama) where
-                    # it's meaningful; API-key providers use their SDK defaults.
+                    # Memory extraction uses the model that answered this chat: same
+                    # provider, model, key and base URL as the chat request above
+                    provider_for_extraction = provider_name
+                    extractor_model = model_name
                     ext_api_key = api_key
-                    _LOCAL_PROVIDERS = {"lmstudio", "ollama"}
-                    ext_base_url = provider_config.get("baseUrl") if provider_for_extraction in _LOCAL_PROVIDERS else None
+                    ext_base_url = provider_config.get("baseUrl")
                     memory_extractor = MemoryExtractor(
                         provider_name=provider_for_extraction, model=extractor_model,
                         api_key=ext_api_key, base_url=ext_base_url,
@@ -2113,15 +2104,6 @@ async def send_message(
                     except Exception as e:
                         logger.warning(f"Knowledge graph not available: {e}")
 
-                    # Build a lightweight LLM provider for entity extraction
-                    # (reuses the same cheap model used for memory extraction)
-                    from llm.factory import create_provider
-                    _extraction_provider = create_provider(
-                        provider_for_extraction,
-                        api_key=ext_api_key,
-                        base_url=ext_base_url,
-                    )
-
                     result = await process_response(
                         user_query=data.content,
                         assistant_response=full_response,
@@ -2133,7 +2115,7 @@ async def send_message(
                         negative_extractor=negative_extractor,
                         negative_store=negative_store,
                         graph_store=graph_store,
-                        llm_provider=_extraction_provider,
+                        llm_provider=provider,  # entity extraction: the chat's provider
                         llm_model=extractor_model,
                     )
                     logger.info(f"Outlet completed: {result}")

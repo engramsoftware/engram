@@ -211,7 +211,9 @@ async def generate_sse_stream(
     db,
     memory_store,
     graph_store,
-    provider_name: str
+    provider_name: str,
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """Generate SSE stream in OpenAI-compatible format."""
     response_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
@@ -287,32 +289,15 @@ async def generate_sse_stream(
         # Run outlet pipeline after streaming completes
         try:
             negative_store = NegativeKnowledgeStore(mongo_db=db)
-            # Use the active chat provider but pick cheap models to keep costs low
-            _CHEAP_MODELS = {
-                "anthropic": ANTHROPIC_FAST_MODEL,
-                "openai": "gpt-4o-mini",
-            }
-            ext_provider = provider_name or "lmstudio"
-            ext_model = _CHEAP_MODELS.get(provider_name, model)
-            # Only pass base_url for local providers; API-key providers use SDK defaults
-            _LOCAL_PROVIDERS = {"lmstudio", "ollama"}
-            ext_base_url = base_url if ext_provider in _LOCAL_PROVIDERS else None
+            # Memory extraction uses the model that answered this request
             memory_extractor = MemoryExtractor(
-                provider_name=ext_provider, model=ext_model,
-                api_key=api_key, base_url=ext_base_url,
+                provider_name=provider_name, model=model, api_key=api_key, base_url=base_url,
             )
             conflict_resolver = ConflictResolver(
-                provider_name=ext_provider, model=ext_model,
-                api_key=api_key, base_url=ext_base_url,
+                provider_name=provider_name, model=model, api_key=api_key, base_url=base_url,
             )
             negative_extractor = NegativeKnowledgeExtractor(
-                provider_name=ext_provider, model=ext_model,
-                api_key=api_key, base_url=ext_base_url,
-            )
-            # Build a lightweight LLM provider for entity extraction
-            from llm.factory import create_provider
-            _extraction_provider = create_provider(
-                ext_provider, api_key=api_key, base_url=ext_base_url,
+                provider_name=provider_name, model=model, api_key=api_key, base_url=base_url,
             )
 
             result = await process_response(
@@ -326,8 +311,8 @@ async def generate_sse_stream(
                 negative_extractor=negative_extractor,
                 negative_store=negative_store,
                 graph_store=graph_store,
-                llm_provider=_extraction_provider,
-                llm_model=ext_model,
+                llm_provider=provider,  # entity extraction: the request's provider
+                llm_model=model,
             )
             logger.info(f"Agent streaming outlet: {result}")
         except Exception as e:
@@ -585,7 +570,9 @@ async def chat_completions(
                     db=db,
                     memory_store=memory_store,
                     graph_store=graph_store,
-                    provider_name=provider_name
+                    provider_name=provider_name,
+                    api_key=api_key,
+                    base_url=base_url,
                 ),
                 media_type="text/event-stream",
                 headers={
@@ -623,9 +610,16 @@ async def chat_completions(
         # Run outlet pipeline (memory/entity extraction) in background
         try:
             negative_store = NegativeKnowledgeStore(mongo_db=db)
-            memory_extractor = MemoryExtractor(provider_name=provider_name, model=request.model)
-            conflict_resolver = ConflictResolver(provider_name=provider_name, model=request.model)
-            negative_extractor = NegativeKnowledgeExtractor(provider_name=provider_name, model=request.model)
+            # Memory extraction uses the model that answered this request
+            memory_extractor = MemoryExtractor(
+                provider_name=provider_name, model=request.model, api_key=api_key, base_url=base_url,
+            )
+            conflict_resolver = ConflictResolver(
+                provider_name=provider_name, model=request.model, api_key=api_key, base_url=base_url,
+            )
+            negative_extractor = NegativeKnowledgeExtractor(
+                provider_name=provider_name, model=request.model, api_key=api_key, base_url=base_url,
+            )
 
             result = await process_response(
                 user_query=user_message.content,

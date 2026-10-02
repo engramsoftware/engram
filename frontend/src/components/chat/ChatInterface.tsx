@@ -3,14 +3,15 @@
  * Displays messages and handles user input with streaming responses.
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Menu } from 'lucide-react'
 import { useChatStore } from '../../stores/chatStore'
 import { useDonationStore } from '../../stores/donationStore'
+import { useUIStore } from '../../stores/uiStore'
 import { messagesApi, conversationsApi } from '../../services/api'
 import MessageList from './MessageList'
 import MessageInput from './MessageInput'
 import ModelSelector from './ModelSelector'
-import DonationPopup from '../DonationPopup'
 import type { ImageAttachment } from '../../types/chat.types'
 
 export default function ChatInterface() {
@@ -26,36 +27,70 @@ export default function ChatInterface() {
     updateConversation,
     isStreaming,
     setStreaming,
-    setLoading 
+    isLoading,
+    setLoading,
+    conversations,
+    conversationsStatus,
+    loadConversations,
+    addConversation,
+    setActiveConversation,
   } = useChatStore()
   const { incrementMessages } = useDonationStore()
-  
+  const { sidebarOpen, toggleSidebar } = useUIStore()
+
+  const scrollRef = useRef<HTMLDivElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const isFirstMessage = useRef(false)
+  // Follow new content only while the user is at (or near) the bottom
+  const stickToBottom = useRef(true)
+  const [loadError, setLoadError] = useState(false)
+  const [reloadKey, setReloadKey] = useState(0)
 
-  // Fetch messages when conversation changes
+  // Fetch messages when conversation changes (or on Retry)
   useEffect(() => {
     if (!activeConversationId) return
-    
+    let cancelled = false
+    stickToBottom.current = true
+
     async function fetchMessages() {
       setLoading(true)
+      setLoadError(false)
       try {
         const data = await messagesApi.list(activeConversationId!)
-        setMessages(data)
+        // Ignore a response that arrives after the user switched conversations
+        if (!cancelled) setMessages(data)
       } catch (error) {
         console.error('Failed to fetch messages:', error)
+        if (!cancelled) setLoadError(true)
       } finally {
-        setLoading(false)
+        if (!cancelled) setLoading(false)
       }
     }
-    
-    fetchMessages()
-  }, [activeConversationId, setMessages, setLoading])
 
-  // Auto-scroll to bottom
+    fetchMessages()
+    return () => { cancelled = true }
+  }, [activeConversationId, reloadKey, setMessages, setLoading])
+
+  const handleScroll = () => {
+    const el = scrollRef.current
+    if (el) stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80
+  }
+
+  // Auto-scroll to bottom; instant while tokens stream (smooth per token stutters)
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    if (!stickToBottom.current) return
+    messagesEndRef.current?.scrollIntoView({ behavior: isStreaming ? 'auto' : 'smooth' })
+  }, [messages, isStreaming])
+
+  const handleNewChat = async () => {
+    try {
+      const conv = await conversationsApi.create()
+      addConversation(conv)
+      setActiveConversation(conv.id)
+    } catch (error) {
+      console.error('Failed to create conversation:', error)
+    }
+  }
 
   // Handle sending a message with SSE streaming
   const handleSend = async (content: string, images?: ImageAttachment[]) => {
@@ -66,6 +101,7 @@ export default function ChatInterface() {
 
     // Track if this is the first message (for auto-title)
     isFirstMessage.current = messages.length === 0
+    stickToBottom.current = true
 
     // Add user message optimistically (include images for display)
     const userMsg = {
@@ -195,16 +231,62 @@ export default function ChatInterface() {
   }
 
 
-  // Empty state — no conversation selected, show loading
+  const menuButton = (
+    <button
+      onClick={toggleSidebar}
+      className={`${sidebarOpen ? 'md:hidden' : ''} p-1.5 rounded-lg text-dark-text-secondary
+                  hover:text-dark-text-primary hover:bg-dark-bg-secondary transition-colors`}
+      aria-label="Open menu"
+    >
+      <Menu size={20} />
+    </button>
+  )
+
+  // No conversation selected: loading, failed, empty, or none picked yet
   if (!activeConversationId) {
-    return (
-      <div className="flex-1 flex items-center justify-center px-4">
-        <div className="text-center">
+    let body
+    if (conversationsStatus === 'error') {
+      body = (
+        <>
+          <p className="text-sm text-dark-text-secondary mb-3">Couldn't load your conversations.</p>
+          <button
+            onClick={loadConversations}
+            className="px-3 py-1.5 rounded-lg text-sm bg-dark-bg-secondary hover:bg-dark-border text-dark-text-primary transition-colors"
+          >
+            Retry
+          </button>
+        </>
+      )
+    } else if (conversationsStatus === 'loaded') {
+      body = (
+        <>
+          <p className="text-sm text-dark-text-secondary mb-3">
+            {conversations.length === 0 ? 'No conversations yet.' : 'Pick a conversation from the sidebar, or start a new one.'}
+          </p>
+          <button
+            onClick={handleNewChat}
+            className="px-3 py-1.5 rounded-lg text-sm bg-dark-accent-primary hover:bg-dark-accent-hover text-white transition-colors"
+          >
+            Start a new chat
+          </button>
+        </>
+      )
+    } else {
+      body = (
+        <>
           <div className="w-10 h-10 border-2 border-indigo-500/30 border-t-indigo-500
                           rounded-full animate-spin mx-auto mb-4" />
           <p className="text-sm text-dark-text-secondary">
             Loading your conversations...
           </p>
+        </>
+      )
+    }
+    return (
+      <div className="flex flex-col h-full">
+        <div className={`${sidebarOpen ? 'md:hidden' : ''} px-4 py-2 flex items-center`}>{menuButton}</div>
+        <div className="flex-1 flex items-center justify-center px-4">
+          <div className="text-center">{body}</div>
         </div>
       </div>
     )
@@ -212,18 +294,30 @@ export default function ChatInterface() {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Donation popup — shows every 50 messages unless donated */}
-      <DonationPopup />
-
-      {/* Header */}
-      <div className="border-b border-dark-border px-4 py-2 flex items-center justify-between
+      {/* Header. `relative z-10`: backdrop-blur makes this a stacking context, and
+          without a z-index, positioned message content (code blocks) painted over
+          the model dropdown and swallowed taps on it. */}
+      <div className="relative z-10 border-b border-dark-border px-4 py-2 flex items-center gap-2
                       bg-dark-bg-primary/80 backdrop-blur-sm">
+        {menuButton}
         <ModelSelector />
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto">
-        <MessageList messages={messages} isStreaming={isStreaming} />
+      <div ref={scrollRef} onScroll={handleScroll} className="flex-1 overflow-y-auto">
+        {loadError && messages.length === 0 ? (
+          <div className="h-full flex flex-col items-center justify-center gap-3 px-4 text-center">
+            <p className="text-sm text-dark-text-secondary">Couldn't load this conversation.</p>
+            <button
+              onClick={() => setReloadKey(k => k + 1)}
+              className="px-3 py-1.5 rounded-lg text-sm bg-dark-bg-secondary hover:bg-dark-border text-dark-text-primary transition-colors"
+            >
+              Retry
+            </button>
+          </div>
+        ) : (
+          <MessageList messages={messages} isStreaming={isStreaming} isLoading={isLoading} />
+        )}
         <div ref={messagesEndRef} />
       </div>
 

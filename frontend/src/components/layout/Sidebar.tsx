@@ -48,28 +48,13 @@ export default function Sidebar() {
   const closeMobileSidebar = () => {
     if (window.innerWidth < 768) setSidebarOpen(false)
   }
-  const { conversations, setConversations, addConversation, setActiveConversation } = useChatStore()
+  const { conversations, conversationsStatus, loadConversations, addConversation, setActiveConversation } = useChatStore()
   const { user, logout } = useAuthStore()
   const { hasDonated } = useDonationStore()
   const [unreadNotifs, setUnreadNotifs] = useState(0)
 
-  // Fetch conversations on mount and auto-select the most recent one
-  // so the user lands in their last chat instead of the empty welcome page
-  useEffect(() => {
-    async function fetchConversations() {
-      try {
-        const data = await conversationsApi.list()
-        setConversations(data)
-        // Auto-select the most recent conversation if none is active
-        if (data.length > 0 && !useChatStore.getState().activeConversationId) {
-          setActiveConversation(data[0].id)
-        }
-      } catch (error) {
-        console.error('Failed to fetch conversations:', error)
-      }
-    }
-    fetchConversations()
-  }, [setConversations, setActiveConversation])
+  // Fetch conversations on mount; the store lands the user in the most recent one
+  useEffect(() => { loadConversations() }, [loadConversations])
 
   // Poll for unread notification count every 30s
   useEffect(() => {
@@ -148,16 +133,26 @@ export default function Sidebar() {
             <MessageSquare size={16} />
             <span>Chats</span>
           </div>
-          <ConversationList conversations={conversations} />
+          {conversationsStatus === 'error' ? (
+            <div className="px-2 py-2 text-xs text-dark-text-secondary">
+              Couldn't load your chats.{' '}
+              <button onClick={loadConversations} className="text-dark-accent-primary hover:underline">
+                Retry
+              </button>
+            </div>
+          ) : (
+            <ConversationList conversations={conversations} />
+          )}
         </div>
       </div>
 
       {/* Navigation Items */}
-      <div className="border-t border-dark-border p-2">
+      <nav aria-label="Main navigation" className="border-t border-dark-border p-2">
         {navItems.map((item) => (
           <button
             key={item.id}
             onClick={() => { setActiveTab(item.id); closeMobileSidebar() }}
+            aria-current={activeTab === item.id ? 'page' : undefined}
             className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg
                        text-sm transition-colors
                        ${activeTab === item.id
@@ -175,7 +170,7 @@ export default function Sidebar() {
             )}
           </button>
         ))}
-      </div>
+      </nav>
 
       {/* Donate button — hidden after user donates */}
       {!hasDonated && (

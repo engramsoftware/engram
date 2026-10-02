@@ -1295,6 +1295,10 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 from memory.memory_store import MemoryStore
                 
                 memory_store = get_memory_store()
+                if not (memory_store and memory_store.is_available):
+                    # MemoryEvolution skips the write without error when the store is
+                    # unavailable, which reported success while persisting nothing.
+                    raise RuntimeError("memory store unavailable")
                 evolution = MemoryEvolution(memory_store)
                 
                 note = await evolution.add_memory(
@@ -1443,6 +1447,10 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             try:
                 from memory.memory_evolution import MemoryEvolution
                 memory_store = get_memory_store()
+                if not (memory_store and memory_store.is_available):
+                    # MemoryEvolution skips the write without error when the store is
+                    # unavailable, which reported success while persisting nothing.
+                    raise RuntimeError("memory store unavailable")
                 evolution = MemoryEvolution(memory_store)
                 
                 solution_text = f"Problem: {problem}\nSolution: {solution}"

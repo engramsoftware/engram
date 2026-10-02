@@ -29,6 +29,7 @@ interface Props {
 export default function MessageInput({ onSend, disabled }: Props) {
   const [content, setContent] = useState('')
   const [showSlashHints, setShowSlashHints] = useState(false)
+  const [activeCommand, setActiveCommand] = useState(0)
   const [pendingImages, setPendingImages] = useState<ImageAttachment[]>([])
   const [uploading, setUploading] = useState(false)
   const [dragOver, setDragOver] = useState(false)
@@ -46,7 +47,13 @@ export default function MessageInput({ onSend, disabled }: Props) {
   // Show slash command hints when input starts with "/"
   useEffect(() => {
     setShowSlashHints(content.startsWith('/') && content.length < 20)
+    setActiveCommand(0)
   }, [content])
+
+  const filteredCommands = SLASH_COMMANDS.filter((c) =>
+    c.cmd.startsWith(content.trim().toLowerCase()) || content.trim() === '/'
+  )
+  const commandMenuOpen = showSlashHints && filteredCommands.length > 0
 
   const handleSend = () => {
     if ((!content.trim() && pendingImages.length === 0) || disabled) return
@@ -57,12 +64,30 @@ export default function MessageInput({ onSend, disabled }: Props) {
   }
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (commandMenuOpen) {
+      const count = filteredCommands.length
+      const highlighted = filteredCommands[Math.min(activeCommand, count - 1)]
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault()
+        setActiveCommand(i => (i + (e.key === 'ArrowDown' ? 1 : count - 1)) % count)
+        return
+      }
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setShowSlashHints(false)
+        return
+      }
+      // Enter/Tab pick the highlighted command instead of sending a half-typed one;
+      // a complete command (e.g. "/digest") still sends on Enter
+      if ((e.key === 'Enter' && !e.shiftKey && content.trim() !== highlighted.usage) || e.key === 'Tab') {
+        e.preventDefault()
+        selectCommand(highlighted.usage)
+        return
+      }
+    }
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
-    }
-    if (e.key === 'Escape') {
-      setShowSlashHints(false)
     }
   }
 
@@ -152,10 +177,6 @@ export default function MessageInput({ onSend, disabled }: Props) {
     setDragOver(false)
   }
 
-  const filteredCommands = SLASH_COMMANDS.filter((c) =>
-    c.cmd.startsWith(content.trim().toLowerCase()) || content.trim() === '/'
-  )
-
   return (
     <div
       className={`relative max-w-3xl mx-auto ${dragOver ? 'ring-2 ring-indigo-500/50 rounded-xl' : ''}`}
@@ -164,23 +185,29 @@ export default function MessageInput({ onSend, disabled }: Props) {
       onDragLeave={handleDragLeave}
     >
       {/* Slash command hints popup */}
-      {showSlashHints && filteredCommands.length > 0 && (
+      {commandMenuOpen && (
         <div className="absolute bottom-full left-0 mb-2 w-full sm:w-80 bg-dark-bg-secondary
                         border border-dark-border rounded-lg shadow-lg z-50 overflow-hidden">
           <div className="px-3 py-1.5 text-xs text-dark-text-secondary border-b border-dark-border">
             Commands
           </div>
-          {filteredCommands.map((c) => (
+          <div id="slash-commands" role="listbox" aria-label="Commands">
+          {filteredCommands.map((c, i) => (
             <button
               key={c.cmd}
+              id={`slash-command-${i}`}
+              role="option"
+              aria-selected={i === activeCommand}
               onClick={() => selectCommand(c.usage)}
-              className="w-full flex items-center justify-between px-3 py-2 text-sm
-                         hover:bg-dark-bg-primary transition-colors text-left"
+              onMouseEnter={() => setActiveCommand(i)}
+              className={`w-full flex items-center justify-between px-3 py-2 text-sm
+                         transition-colors text-left ${i === activeCommand ? 'bg-dark-bg-primary' : ''}`}
             >
               <span className="font-mono text-dark-accent-primary">{c.cmd}</span>
               <span className="text-dark-text-secondary text-xs hidden sm:inline">{c.desc}</span>
             </button>
           ))}
+          </div>
         </div>
       )}
 
@@ -271,6 +298,9 @@ export default function MessageInput({ onSend, disabled }: Props) {
           onChange={(e) => setContent(e.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={handlePaste}
+          aria-label="Message"
+          aria-controls={commandMenuOpen ? 'slash-commands' : undefined}
+          aria-activedescendant={commandMenuOpen ? `slash-command-${activeCommand}` : undefined}
           placeholder="Type a message... (/ for commands)"
           disabled={disabled}
           rows={1}

@@ -569,6 +569,38 @@ export const usersApi = {
 }
 
 // ============================================================
+// Personal API tokens (for the OpenAI-compatible endpoint)
+// ============================================================
+export interface ApiToken {
+  id: string
+  name: string
+  hint: string
+  created_at: string
+  last_used_at?: string | null
+}
+
+export const tokensApi = {
+  async list(): Promise<ApiToken[]> {
+    const res = await fetchWithAuth('/tokens')
+    if (!res.ok) throw await errorFrom(res, "Couldn't load API tokens")
+    return res.json()
+  },
+
+  /** The returned `token` is shown once and never again */
+  async create(name: string): Promise<ApiToken & { token: string }> {
+    const res = await fetchWithAuth('/tokens', { method: 'POST', body: JSON.stringify({ name }) })
+    if (!res.ok) throw await errorFrom(res, "Couldn't create the token")
+    return res.json()
+  },
+
+  async revoke(id: string) {
+    const res = await fetchWithAuth(`/tokens/${id}`, { method: 'DELETE' })
+    if (!res.ok) throw await errorFrom(res, "Couldn't revoke the token")
+    return res.json()
+  },
+}
+
+// ============================================================
 // Add-ins API
 // ============================================================
 export const addinsApi = {

@@ -36,7 +36,7 @@ export const SETTINGS_SECTIONS: Record<string, SectionMeta> = {
   web: { label: 'Web & knowledge', icon: <Globe size={16} />, description: 'Let Engram look things up and remember connections.' },
   email: { label: 'Email', icon: <Mail size={16} />, description: 'Engram can email you reminders, summaries and alerts.' },
   addins: { label: 'Add-ins', icon: <Puzzle size={16} />, description: 'Extra abilities for Engram.' },
-  account: { label: 'Account', icon: <UserCircle size={16} />, description: 'Your profile, password and how Engram looks.' },
+  account: { label: 'Account', icon: <UserCircle size={16} />, description: 'Your profile, password, API tokens and how Engram looks.' },
   users: { label: 'Users', icon: <Users size={16} />, description: 'People who can sign in to this Engram. Only admins see this section.' },
   data: { label: 'Data & logs', icon: <Database size={16} />, description: 'Export or import your data, and server diagnostics.' },
 }

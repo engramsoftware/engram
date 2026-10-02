@@ -36,7 +36,7 @@ from middleware.private_network import PrivateNetworkMiddleware
 from middleware.rate_limit import RateLimitMiddleware
 
 # Import routers
-from routers import auth, conversations, messages, search, addins, personas, memories, notes, documents, uploads, openai_compat, users, notifications, graph, setup, data_transfer, budget, email_reader, schedule
+from routers import auth, conversations, messages, search, addins, personas, memories, notes, documents, uploads, openai_compat, users, notifications, graph, setup, data_transfer, budget, email_reader, schedule, api_tokens
 from routers import settings as settings_router
 
 # ============================================================
@@ -226,6 +226,7 @@ app.include_router(notes.router, prefix="/api/notes", tags=["Notes"])
 app.include_router(documents.router, prefix="/api/documents", tags=["Documents"])
 app.include_router(uploads.router, prefix="/api/uploads", tags=["Uploads"])
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
+app.include_router(api_tokens.router, prefix="/api/tokens", tags=["API tokens"])
 app.include_router(notifications.router, prefix="/api", tags=["Notifications"])
 app.include_router(openai_compat.router, prefix="/api", tags=["OpenAI Compatible"])
 app.include_router(graph.router, prefix="/api/graph", tags=["Knowledge Graph"])

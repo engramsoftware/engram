@@ -330,7 +330,7 @@ Context is injected into the system prompt with a 6000-token budget. Priority or
 ### Two API Entry Points
 
 1. **`POST /messages`** - Main chat UI endpoint with streaming
-2. **`POST /v1/chat/completions`** - OpenAI-compatible API for code agents and external tools
+2. **`POST /api/v1/chat/completions`** - OpenAI-compatible API for code agents and external tools. It needs a personal API token: create one in Settings › Account › API tokens and use it as the agent's API key (`Authorization: Bearer engram_...`). Requests run as that account.
 
 Both run the same retrieval and outlet pipeline.
 

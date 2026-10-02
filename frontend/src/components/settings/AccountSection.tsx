@@ -15,6 +15,7 @@ import {
   ActionButton, ActionRow, ActionStatus, ConfirmButton, ErrorStatus, PasswordField, TextField, UnsavedPill,
   useAction, useDirty,
 } from './primitives'
+import ApiTokensCard from './ApiTokensCard'
 
 const MIN_PASSWORD = 8
 
@@ -101,6 +102,8 @@ export default function AccountSection() {
           <ActionStatus state={passwordState} />
         </ActionRow>
       </section>
+
+      <ApiTokensCard />
 
       <section aria-labelledby="account-appearance" className="rounded-lg border border-dark-border/60 bg-dark-bg-secondary/50 p-4 space-y-3">
         <div>

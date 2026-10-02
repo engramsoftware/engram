@@ -23,6 +23,8 @@ from database import get_database
 from pipeline.inlet import enrich_request
 from pipeline.outlet import process_response
 from llm.factory import create_provider
+from routers.auth import user_for_session_token
+from routers.api_tokens import user_for_api_token
 from llm.anthropic_provider import ANTHROPIC_FAST_MODEL
 from config import get_settings
 from memory.memory_store import MemoryStore
@@ -105,67 +107,6 @@ class OpenAIChatResponse(BaseModel):
 # ============================================================
 # Helper functions
 # ============================================================
-
-async def get_or_create_anonymous_user(db, x_user_id: Optional[str] = None) -> str:
-    """
-    Get or create a user for API access.
-
-    If X-User-Id header is provided, use that user's data.
-    Otherwise, use anonymous user.
-    """
-    # If X-User-Id header provided, use that user's memories/graph
-    if x_user_id:
-        logger.info(f"Using provided user ID: {x_user_id}")
-        return x_user_id
-
-    # Default: find user with the most memories (likely the primary user)
-    try:
-        # Count memories per user and pick the one with the most
-        user_counts: dict = {}
-        async for doc in db.autonomous_memories.find({"invalidatedAt": None}):
-            uid = doc.get("userId", "")
-            user_counts[uid] = user_counts.get(uid, 0) + 1
-        if user_counts:
-            best_uid = max(user_counts, key=user_counts.get)
-            logger.info(f"Using user with most memories: {best_uid} ({user_counts[best_uid]} memories)")
-            return best_uid
-    except Exception as e:
-        logger.debug(f"Could not find user by memories: {e}")
-
-    # Fallback: find non-test user
-    try:
-        real_user = await db.users.find_one(
-            {"email": {"$ne": "agent@anonymous.local"}},
-        )
-        if real_user:
-            user_id = str(real_user["_id"])
-            logger.info(f"Using non-test user: {user_id}")
-            return user_id
-    except Exception as e:
-        logger.debug(f"Could not find non-test user: {e}")
-
-    # Fallback to anonymous user
-    anonymous_user_id = "anonymous-agent"
-
-    try:
-        user = await db.users.find_one({"_id": anonymous_user_id})
-
-        if not user:
-            await db.users.insert_one({
-                "_id": anonymous_user_id,
-                "email": "agent@anonymous.local",
-                "hashedPassword": "",
-                "createdAt": datetime.utcnow(),
-                "settings": {}
-            })
-            logger.info("Created anonymous agent user")
-
-        return anonymous_user_id
-
-    except Exception as e:
-        logger.error(f"Failed to get/create anonymous user: {e}")
-        return "anonymous-agent"
-
 
 async def get_or_create_agent_conversation(db, user_id: str) -> str:
     """
@@ -333,7 +274,6 @@ async def generate_sse_stream(
 async def chat_completions(
     request: OpenAIChatRequest,
     authorization: Optional[str] = Header(None),
-    x_user_id: Optional[str] = Header(None, alias="X-User-Id")
 ) -> dict:
     """
     OpenAI-compatible chat completions endpoint.
@@ -341,47 +281,39 @@ async def chat_completions(
     Enables code agents to access the memory-augmented chat system.
     Supports both streaming and non-streaming responses.
 
-    Authentication: Accepts a JWT Bearer token in the Authorization header.
-    If provided, the token is validated and the user is identified from it.
-    If no token is provided, falls back to X-User-Id header or anonymous user.
-    The PrivateNetworkMiddleware ensures only LAN/VPN clients can reach this.
+    Authentication (required): ``Authorization: Bearer <token>`` with a
+    personal API token from Settings > Account > API tokens (or a login
+    token). Requests run as the token's account; there is no anonymous or
+    header-chosen user.
 
     Usage:
-        Point your agent at: http://<lan-ip>:8000/v1/chat/completions
-        Pass your JWT token as the API key for authenticated access.
+        Point your agent at: http://<lan-ip>:8000/api/v1/chat/completions
+        and use your API token as the API key.
 
     Example:
-        curl http://192.168.1.100:8000/v1/chat/completions \\
+        curl http://192.168.1.100:8000/api/v1/chat/completions \\
           -H "Content-Type: application/json" \\
-          -H "Authorization: Bearer <your-jwt-token>" \\
+          -H "Authorization: Bearer engram_..." \\
           -d '{
             "model": "gpt-4o-mini",
             "messages": [{"role": "user", "content": "Hello!"}]
           }'
     """
+    # Authenticate first: the handler below turns any exception into a 500
+    caller = None
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization[7:].strip()
+        caller = await user_for_api_token(token) or await user_for_session_token(token)
+    if not caller:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing or invalid API token. Create one in Engram under Settings › Account › API tokens "
+                   "and send it as 'Authorization: Bearer <token>'.",
+        )
+
     try:
-        # Get database
-        # get_database() returns an AsyncIOMotorDatabase, not an awaitable.
         db = get_database()
-
-        # Try to authenticate via JWT if a Bearer token is provided
-        authenticated_user_id = None
-        if authorization and authorization.startswith("Bearer "):
-            token = authorization[7:]
-            try:
-                from jose import jwt as jose_jwt
-                payload = jose_jwt.decode(
-                    token,
-                    settings.jwt_secret_key,
-                    algorithms=[settings.jwt_algorithm],
-                )
-                authenticated_user_id = payload.get("sub")
-                logger.info(f"OpenAI compat: authenticated user {authenticated_user_id}")
-            except Exception:
-                pass  # Invalid token — fall back to anonymous
-
-        # Use authenticated user or fall back to header/anonymous
-        user_id = authenticated_user_id or await get_or_create_anonymous_user(db, x_user_id)
+        user_id = caller["id"]
         conversation_id = await get_or_create_agent_conversation(db, user_id)
         
         logger.info(f"Agent request: model={request.model}, messages={len(request.messages)}, stream={request.stream}")

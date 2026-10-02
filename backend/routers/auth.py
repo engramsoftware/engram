@@ -88,6 +88,29 @@ async def ensure_admin_exists(db) -> None:
         logger.info(f"No admin found; made the first account an admin: {first[0]['email']}")
 
 
+async def user_for_session_token(token: str) -> Optional[dict]:
+    """The account a login token belongs to, or None if the token is invalid,
+    expired, or from a session that has been ended."""
+    settings = get_settings()
+    try:
+        payload = jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+    except JWTError:
+        return None
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+    user = await get_database().users.find_one({"_id": ObjectId(user_id)})
+    # Tokens issued before a password change or "sign out everywhere" are void
+    if not user or payload.get("ver", 0) != user.get("tokenVersion", 0):
+        return None
+    return {
+        "id": str(user["_id"]),
+        "email": user["email"],
+        "name": user["name"],
+        "is_admin": bool(user.get("isAdmin")),
+    }
+
+
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials = Depends(security)
 ) -> dict:
@@ -95,38 +118,10 @@ async def get_current_user(
     Dependency to get current authenticated user from JWT token.
     Raises HTTPException if token is invalid.
     """
-    settings = get_settings()
-    token = credentials.credentials
-    
-    try:
-        payload = jwt.decode(
-            token, 
-            settings.jwt_secret_key, 
-            algorithms=[settings.jwt_algorithm]
-        )
-        user_id = payload.get("sub")
-        if not user_id:
-            raise HTTPException(status_code=401, detail="Invalid token")
-    except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
-    # Fetch user from database
-    db = get_database()
-    user = await db.users.find_one({"_id": ObjectId(user_id)})
-    
+    user = await user_for_session_token(credentials.credentials)
     if not user:
-        raise HTTPException(status_code=401, detail="User not found")
-
-    # Tokens issued before a password change or "sign out everywhere" are void
-    if payload.get("ver", 0) != user.get("tokenVersion", 0):
-        raise HTTPException(status_code=401, detail="Session ended. Please sign in again.")
-
-    return {
-        "id": str(user["_id"]),
-        "email": user["email"],
-        "name": user["name"],
-        "is_admin": bool(user.get("isAdmin")),
-    }
+        raise HTTPException(status_code=401, detail="Your session has ended. Please sign in again.")
+    return user
 
 
 async def require_admin(current_user: dict = Depends(get_current_user)) -> dict:

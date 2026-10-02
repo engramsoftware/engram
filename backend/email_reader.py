@@ -15,6 +15,7 @@ import email
 import imaplib
 import logging
 import re
+import ssl
 from datetime import datetime, timedelta
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
@@ -24,6 +25,9 @@ logger = logging.getLogger(__name__)
 
 # Max emails to return per search (cost/memory control)
 MAX_RESULTS = 50
+
+# Socket timeout for IMAP operations, so an unresponsive server cannot hang forever
+IMAP_TIMEOUT_SECONDS = 30
 
 # Max body length to extract per email (token budget)
 MAX_BODY_LENGTH = 4000
@@ -132,7 +136,12 @@ class EmailReader:
             True if connected successfully, False otherwise.
         """
         try:
-            self._conn = imaplib.IMAP4_SSL(self.imap_host, self.imap_port)
+            self._conn = imaplib.IMAP4_SSL(
+                self.imap_host,
+                self.imap_port,
+                ssl_context=ssl.create_default_context(),  # verify the server certificate
+                timeout=IMAP_TIMEOUT_SECONDS,
+            )
             self._conn.login(self.username, self.password)
             logger.info(f"IMAP connected to {self.imap_host} as {self.username}")
             return True

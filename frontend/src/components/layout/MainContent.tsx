@@ -47,7 +47,7 @@ function getTabLabel(tab: string): string {
 }
 
 export default function MainContent() {
-  const { activeTab, setActiveTab, toggleSidebar } = useUIStore()
+  const { activeTab, setActiveTab, toggleSidebar, sidebarOpen } = useUIStore()
 
   // Render content based on active tab
   const renderContent = () => {
@@ -94,10 +94,11 @@ export default function MainContent() {
 
   return (
     <div className="flex-1 bg-dark-bg-primary overflow-hidden flex flex-col">
-      {/* Mobile header for non-chat tabs — back button + title + menu */}
+      {/* Header for non-chat tabs — back button + title + menu. Always on mobile;
+          on desktop only while the sidebar is collapsed, so it can be reopened. */}
       {isNonChatTab && (
-        <div className="md:hidden flex items-center gap-2 px-3 py-2.5 border-b border-dark-border
-                        bg-dark-bg-primary/90 backdrop-blur-sm flex-shrink-0">
+        <div className={`${sidebarOpen ? 'md:hidden' : ''} flex items-center gap-2 px-3 py-2.5 border-b border-dark-border
+                        bg-dark-bg-primary/90 backdrop-blur-sm flex-shrink-0`}>
           <button
             onClick={() => setActiveTab('chat')}
             className="p-1.5 rounded-lg text-dark-text-secondary hover:text-dark-text-primary

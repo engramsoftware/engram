@@ -4,11 +4,13 @@
  */
 
 import { create } from 'zustand'
+import { conversationsApi } from '../services/api'
 import type { Conversation, Message, WebSource, NotificationSummary, ContextMetadata } from '../types/chat.types'
 
 interface ChatState {
   // Conversations list
   conversations: Conversation[]
+  conversationsStatus: 'idle' | 'loading' | 'loaded' | 'error'
   activeConversationId: string | null
   
   // Messages for active conversation
@@ -17,6 +19,7 @@ interface ChatState {
   isStreaming: boolean
   
   // Actions
+  loadConversations: () => Promise<void>
   setConversations: (conversations: Conversation[]) => void
   addConversation: (conversation: Conversation) => void
   updateConversation: (id: string, updates: Partial<Conversation>) => void
@@ -34,12 +37,28 @@ interface ChatState {
   setStreaming: (streaming: boolean) => void
 }
 
-export const useChatStore = create<ChatState>((set) => ({
+export const useChatStore = create<ChatState>((set, get) => ({
   conversations: [],
+  conversationsStatus: 'idle',
   activeConversationId: null,
   messages: [],
   isLoading: false,
   isStreaming: false,
+
+  /** Fetch the conversation list; lands in the most recent one if none is active. */
+  loadConversations: async () => {
+    set({ conversationsStatus: 'loading' })
+    try {
+      const data = await conversationsApi.list()
+      set({ conversations: data, conversationsStatus: 'loaded' })
+      if (data.length > 0 && !get().activeConversationId) {
+        get().setActiveConversation(data[0].id)
+      }
+    } catch (error) {
+      console.error('Failed to fetch conversations:', error)
+      set({ conversationsStatus: 'error' })
+    }
+  },
 
   setConversations: (conversations) => set({ conversations }),
   

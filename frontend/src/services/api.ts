@@ -37,6 +37,25 @@ async function fetchWithAuth(
   return response
 }
 
+/**
+ * Readable text from a FastAPI error body: `detail` is a string, or a list of
+ * validation errors (which used to show up as "[object Object]").
+ */
+function detailMessage(body: unknown, fallback: string): string {
+  const detail = (body as { detail?: unknown } | null)?.detail
+  if (typeof detail === 'string' && detail) return detail
+  if (Array.isArray(detail)) {
+    const parts = detail.map(e => (e && typeof e === 'object' && 'msg' in e ? String((e as { msg: unknown }).msg) : String(e)))
+    if (parts.length) return parts.join('; ')
+  }
+  return fallback
+}
+
+async function errorFrom(res: Response, fallback: string): Promise<Error> {
+  const body = await res.json().catch(() => null)
+  return new Error(detailMessage(body, fallback))
+}
+
 // ============================================================
 // Auth API
 // ============================================================
@@ -167,7 +186,7 @@ export const settingsApi = {
       method: 'PUT',
       body: JSON.stringify(settings),
     })
-    if (!res.ok) throw new Error('Failed to update settings')
+    if (!res.ok) throw await errorFrom(res, 'Failed to update settings')
     return res.json()
   },
 
@@ -318,7 +337,7 @@ export const personasApi = {
         is_default: data.isDefault,
       }),
     })
-    if (!res.ok) throw new Error('Failed to create persona')
+    if (!res.ok) throw await errorFrom(res, 'Failed to create persona')
     return res.json()
   },
 
@@ -332,7 +351,7 @@ export const personasApi = {
         is_default: data.isDefault,
       }),
     })
-    if (!res.ok) throw new Error('Failed to update persona')
+    if (!res.ok) throw await errorFrom(res, 'Failed to update persona')
     return res.json()
   },
 
@@ -522,10 +541,7 @@ export const usersApi = {
       method: 'PUT',
       body: JSON.stringify(data),
     })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: 'Update failed' }))
-      throw new Error(err.detail || 'Update failed')
-    }
+    if (!res.ok) throw await errorFrom(res, 'Update failed')
     return res.json()
   },
 
@@ -534,10 +550,7 @@ export const usersApi = {
       method: 'PUT',
       body: JSON.stringify(data),
     })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: 'Update failed' }))
-      throw new Error(err.detail || 'Update failed')
-    }
+    if (!res.ok) throw await errorFrom(res, 'Update failed')
     return res.json()
   },
 
@@ -546,19 +559,13 @@ export const usersApi = {
       method: 'POST',
       body: JSON.stringify(data),
     })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: 'Create failed' }))
-      throw new Error(err.detail || 'Create failed')
-    }
+    if (!res.ok) throw await errorFrom(res, 'Create failed')
     return res.json()
   },
 
   async delete(userId: string) {
     const res = await fetchWithAuth(`/users/${userId}`, { method: 'DELETE' })
-    if (!res.ok) {
-      const err = await res.json().catch(() => ({ detail: 'Delete failed' }))
-      throw new Error(err.detail || 'Delete failed')
-    }
+    if (!res.ok) throw await errorFrom(res, 'Delete failed')
     return res.json()
   },
 }

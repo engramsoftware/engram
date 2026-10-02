@@ -1,21 +1,20 @@
 /**
  * Main content area that switches between tabs.
  * Renders chat interface or settings panels based on active tab.
- * On mobile, non-chat tabs get a header bar with back-to-chat and menu buttons.
+ * On mobile, non-chat tabs get a header bar with back-to-chat and menu buttons;
+ * inside a Settings section the back arrow returns to the Settings list.
  */
 
 import { ArrowLeft, Menu } from 'lucide-react'
 import { useUIStore } from '../../stores/uiStore'
 import ChatInterface from '../chat/ChatInterface'
 import SearchTab from '../search/SearchTab'
-import SettingsTab from '../settings/SettingsTab'
-import AddinsTab from '../addins/AddinsTab'
+import SettingsTab, { SETTINGS_SECTIONS } from '../settings/SettingsTab'
 import AddinPanelRouter from '../addins/panels/AddinPanelRouter'
 import PersonaTab from '../persona/PersonaTab'
 import MemoryTab from '../memory/MemoryTab'
 import NotesTab from '../notes/NotesTab'
 import DocumentsTab from '../documents/DocumentsTab'
-import UsersTab from '../users/UsersTab'
 import NotificationsTab from '../notifications/NotificationsTab'
 import KnowledgeGraphTab from '../graph/KnowledgeGraphTab'
 import BudgetTab from '../budget/BudgetTab'
@@ -25,12 +24,10 @@ import ScheduleTab from '../schedule/ScheduleTab'
 const TAB_LABELS: Record<string, string> = {
   search: 'Search',
   settings: 'Settings',
-  addins: 'Add-ins',
-  persona: 'Persona',
+  persona: 'Personas',
   memory: 'Memory',
   notes: 'Notes',
   documents: 'Documents',
-  users: 'Users',
   notifications: 'Notifications',
   graph: 'Knowledge Graph',
   budget: 'Budget',
@@ -47,7 +44,7 @@ function getTabLabel(tab: string): string {
 }
 
 export default function MainContent() {
-  const { activeTab, setActiveTab, toggleSidebar, sidebarOpen } = useUIStore()
+  const { activeTab, setActiveTab, toggleSidebar, sidebarOpen, settingsSection, settingsView, setSettingsView } = useUIStore()
 
   // Render content based on active tab
   const renderContent = () => {
@@ -65,8 +62,6 @@ export default function MainContent() {
         return <SearchTab />
       case 'settings':
         return <SettingsTab />
-      case 'addins':
-        return <AddinsTab />
       case 'persona':
         return <PersonaTab />
       case 'memory':
@@ -75,8 +70,6 @@ export default function MainContent() {
         return <NotesTab />
       case 'documents':
         return <DocumentsTab />
-      case 'users':
-        return <UsersTab />
       case 'notifications':
         return <NotificationsTab />
       case 'graph':
@@ -91,6 +84,16 @@ export default function MainContent() {
   }
 
   const isNonChatTab = activeTab !== 'chat'
+  // Phones open one Settings section at a time; back returns to the section list
+  const inSettingsSection = activeTab === 'settings' && settingsView === 'section'
+  const isPhone = () => window.matchMedia('(max-width: 767px)').matches
+  const title = inSettingsSection && isPhone()
+    ? SETTINGS_SECTIONS[settingsSection]?.label ?? 'Settings'
+    : getTabLabel(activeTab)
+  const goBack = () => {
+    if (inSettingsSection && isPhone()) setSettingsView('list')
+    else setActiveTab('chat')
+  }
 
   return (
     <div className="flex-1 bg-dark-bg-primary overflow-hidden flex flex-col">
@@ -100,15 +103,15 @@ export default function MainContent() {
         <div className={`${sidebarOpen ? 'md:hidden' : ''} flex items-center gap-2 px-3 py-2.5 border-b border-dark-border
                         bg-dark-bg-primary/90 backdrop-blur-sm flex-shrink-0`}>
           <button
-            onClick={() => setActiveTab('chat')}
+            onClick={goBack}
             className="p-1.5 rounded-lg text-dark-text-secondary hover:text-dark-text-primary
                        hover:bg-dark-bg-secondary transition-colors"
-            aria-label="Back to chat"
+            aria-label={inSettingsSection && isPhone() ? 'Back to Settings' : 'Back to chat'}
           >
             <ArrowLeft size={20} />
           </button>
           <span className="text-sm font-semibold text-dark-text-primary flex-1">
-            {getTabLabel(activeTab)}
+            {title}
           </span>
           <button
             onClick={toggleSidebar}

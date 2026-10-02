@@ -1,58 +1,63 @@
 /**
- * Settings tab: section navigation (a rail on desktop, scrollable tabs on
- * phones) with one panel per section. Panels stay mounted while hidden so
- * unsaved input survives switching sections; the last section is remembered.
+ * Settings: sections in three groups (Assistant, You, Server).
+ *
+ * Desktop shows a grouped rail beside the open section. Phones show the
+ * section list first (with a status per row) and open one section at a time;
+ * the top bar's back arrow returns to the list. Every section stays mounted
+ * while hidden, so unsaved input survives switching sections, and leaving
+ * Settings with unsaved input asks first (see uiStore.requestLeave).
  */
 
 import { useState, useEffect, useRef, type KeyboardEvent, type ReactNode } from 'react'
 import {
-  Settings, Cloud, Monitor, Globe, Mail, ScrollText,
-  Database, Upload, Download, Check, Loader2, Zap, Puzzle,
+  Settings, Cloud, Globe, Mail, Puzzle, UserCircle, Users, Database, ChevronRight,
 } from 'lucide-react'
-import { useAuthStore } from '../../stores/authStore'
 import { useAddinsStore } from '../../stores/addinsStore'
+import { useAuthStore } from '../../stores/authStore'
 import { useUIStore } from '../../stores/uiStore'
-import { settingsApi, addinsApi } from '../../services/api'
+import { settingsApi } from '../../services/api'
+import { friendlyModelName } from '../../utils/modelNames'
+import { newChatModel, newChatProvider, providerName } from '../../utils/providers'
 import type { LLMSettings } from '../../types/chat.types'
-import type { Addin } from '../../types/addin.types'
-import ProviderSettings from './ProviderSettings'
+import ModelsSection from './ModelsSection'
 import BraveSearchSettings from './BraveSearchSettings'
 import Neo4jSettings from './Neo4jSettings'
 import EmailSettings from './EmailSettings'
-import OptimizationSettings from './OptimizationSettings'
-import LoggingSettings from './LoggingSettings'
-import LogViewer from './LogViewer'
-import AddinSettingsRenderer from './AddinSettingsRenderer'
-import { ActionButton, ActionStatus, Badge, SettingsCard, useAction } from './primitives'
-import { newChatProvider } from '../../utils/providers'
+import AddinsSection from './AddinsSection'
+import AccountSection from './AccountSection'
+import UsersSection from './UsersSection'
+import DataSection from './DataSection'
+import { ActionButton, InfoNote } from './primitives'
 
-/** Providers that run locally and don't need an API key */
-const LOCAL_PROVIDERS = new Set(['lmstudio', 'ollama'])
+interface SectionMeta { label: string; icon: ReactNode; description: string }
 
-/** Provider display names for the header subtitle */
-const PROVIDER_DISPLAY: Record<string, string> = {
-  openai: 'OpenAI', anthropic: 'Anthropic',
-  lmstudio: 'LM Studio', ollama: 'Ollama',
+export const SETTINGS_SECTIONS: Record<string, SectionMeta> = {
+  models: { label: 'Models', icon: <Cloud size={16} />, description: 'The AI that answers you. One provider is in use at a time.' },
+  web: { label: 'Web & knowledge', icon: <Globe size={16} />, description: 'Let Engram look things up and remember connections.' },
+  email: { label: 'Email', icon: <Mail size={16} />, description: 'Engram can email you reminders, summaries and alerts.' },
+  addins: { label: 'Add-ins', icon: <Puzzle size={16} />, description: 'Extra abilities for Engram.' },
+  account: { label: 'Account', icon: <UserCircle size={16} />, description: 'Your profile, password and how Engram looks.' },
+  users: { label: 'Users', icon: <Users size={16} />, description: 'People who can sign in to this Engram. Everyone here can manage accounts.' },
+  data: { label: 'Data & logs', icon: <Database size={16} />, description: 'Export or import your data, and server diagnostics.' },
 }
 
-const SECTIONS: { id: string; label: string; icon: ReactNode; description: string }[] = [
-  { id: 'models', label: 'Models', icon: <Cloud size={16} />, description: 'Choose the LLM provider and default model. One provider is active at a time.' },
-  { id: 'search', label: 'Search & Graph', icon: <Globe size={16} />, description: 'Web search and the knowledge graph store.' },
-  { id: 'email', label: 'Email', icon: <Mail size={16} />, description: 'Reminders, summaries and alerts sent to your inbox.' },
-  { id: 'performance', label: 'Performance', icon: <Zap size={16} />, description: 'Response validation and token savings.' },
-  { id: 'addins', label: 'Add-ins', icon: <Puzzle size={16} />, description: 'Turn add-ins on or off and configure the ones that have settings.' },
-  { id: 'system', label: 'System', icon: <ScrollText size={16} />, description: 'Log levels, the live log viewer, and data import/export.' },
+const GROUPS: { label: string; ids: string[] }[] = [
+  { label: 'Assistant', ids: ['models', 'web', 'email', 'addins'] },
+  { label: 'You', ids: ['account'] },
+  { label: 'Server', ids: ['users', 'data'] },
 ]
+const ORDER = GROUPS.flatMap(g => g.ids)
 
 export default function SettingsTab() {
   const [settings, setSettings] = useState<LLMSettings | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [loadError, setLoadError] = useState(false)
   const [retrying, setRetrying] = useState(false)
-  const [loggingOpen, setLoggingOpen] = useState(false)
-  const { settingsSection, setSettingsSection } = useUIStore()
-  const section = SECTIONS.some(s => s.id === settingsSection) ? settingsSection : 'models'
-  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const [userCount, setUserCount] = useState<number | null>(null)
+  const { settingsSection, setSettingsSection, settingsView, setSettingsView, setActiveTab } = useUIStore()
+  const section = ORDER.includes(settingsSection) ? settingsSection : 'models'
+  const railRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const userName = useAuthStore(s => s.user?.name)
 
   const refreshSettings = async () => {
     try {
@@ -65,35 +70,33 @@ export default function SettingsTab() {
     }
   }
 
-  const load = () => {
-    setIsLoading(true)
-    refreshSettings().finally(() => setIsLoading(false))
-  }
+  useEffect(() => { refreshSettings().finally(() => setIsLoading(false)) }, [])
 
-  // Retry in place: the full-page spinner would unmount the panels and lose drafts
+  // Retry in place: a full-page spinner would unmount the sections and lose drafts
   const retry = () => {
     setRetrying(true)
     refreshSettings().finally(() => setRetrying(false))
   }
 
-  useEffect(load, [])
-
-  // Fetch addins for the Add-ins section
   const { addins, loaded: addinsLoaded, fetchAddins } = useAddinsStore()
   useEffect(() => { if (!addinsLoaded) fetchAddins() }, [addinsLoaded, fetchAddins])
+  const addinsOn = addins.filter(a => a.enabled).length
+  const webSearchAddinOn = addins.some(a => a.internal_name === 'web_search' && a.enabled)
 
-  // Arrow keys / Home / End move between section tabs (roving tabindex)
-  const onTabKeyDown = (e: KeyboardEvent<HTMLButtonElement>, index: number) => {
+  const open = (id: string) => { setSettingsSection(id); setSettingsView('section') }
+
+  // Arrow keys / Home / End move between sections in the desktop rail
+  const onRailKeyDown = (e: KeyboardEvent<HTMLButtonElement>, index: number) => {
     let next: number
-    if (e.key === 'ArrowDown' || e.key === 'ArrowRight') next = index + 1
-    else if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') next = index - 1
+    if (e.key === 'ArrowDown') next = index + 1
+    else if (e.key === 'ArrowUp') next = index - 1
     else if (e.key === 'Home') next = 0
-    else if (e.key === 'End') next = SECTIONS.length - 1
+    else if (e.key === 'End') next = ORDER.length - 1
     else return
     e.preventDefault()
-    const target = SECTIONS[(next + SECTIONS.length) % SECTIONS.length]
-    setSettingsSection(target.id)
-    tabRefs.current[target.id]?.focus()
+    const target = ORDER[(next + ORDER.length) % ORDER.length]
+    open(target)
+    railRefs.current[target]?.focus()
   }
 
   if (isLoading) {
@@ -101,357 +104,186 @@ export default function SettingsTab() {
       <div className="h-full flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <div className="w-6 h-6 border-2 border-dark-accent-primary border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-dark-text-secondary">Loading settings...</p>
+          <p className="text-sm text-dark-text-secondary">Loading settings…</p>
         </div>
       </div>
     )
   }
 
-  const providers = settings?.available_providers || []
-  const cloudProviders = providers.filter(p => !LOCAL_PROVIDERS.has(p))
-  const localProviders = providers.filter(p => LOCAL_PROVIDERS.has(p))
-  const anyProviderEnabled = providers.some(p => settings?.providers[p]?.enabled)
-  // Same order as the chat backend, so the header names the provider chat really uses
-  const activeProvider = newChatProvider(settings)
-  const enabledAddins = addins.filter(a => a.enabled).length
-
-  const providerGroup = (label: string, icon: ReactNode, list: string[]) => list.length > 0 && (
-    <div>
-      <div className="flex items-center gap-2 mb-2 text-dark-text-secondary">
-        {icon}
-        <span className="text-[10px] font-semibold uppercase tracking-wider">{label}</span>
-      </div>
-      <div className="space-y-2">
-        {list.map(provider => (
-          <ProviderSettings
-            key={provider}
-            provider={provider}
-            config={settings!.providers[provider]}
-            defaultModel={settings?.default_model}
-            onUpdate={refreshSettings}
-          />
-        ))}
-      </div>
-    </div>
-  )
+  // ---- Status shown in the header (desktop) and the section list (phones)
+  const provider = newChatProvider(settings)
+  const model = newChatModel(settings)
+  const webOn = !!settings?.brave_search?.enabled
+  const email = settings?.email
+  const emailStatus = !email?.enabled ? 'Off' : email.password_set ? 'On' : 'Needs setup'
+  const statusParts = settings ? [
+    provider ? `New chats use ${providerName(provider)}${model ? ` · ${friendlyModelName(model)}` : ''}` : 'No AI provider set up',
+    `Web search ${webOn ? 'on' : 'off'}`,
+    `Email ${emailStatus.toLowerCase()}`,
+    `${addinsOn} add-in${addinsOn !== 1 ? 's' : ''} on`,
+  ] : []
+  const rowStatus: Record<string, string> = {
+    models: settings ? (provider ? providerName(provider) : 'Not set up') : '',
+    web: settings ? `Search ${webOn ? 'on' : 'off'}` : '',
+    email: settings ? emailStatus : '',
+    addins: `${addinsOn} on`,
+    account: userName ?? '',
+    users: userCount !== null ? `${userCount} ${userCount === 1 ? 'person' : 'people'}` : '',
+    data: '',
+  }
+  const description = (id: string) => {
+    if (id === 'addins') return `${SETTINGS_SECTIONS.addins.description} ${addinsOn} of ${addins.length} on.`
+    if (id === 'users' && userCount !== null) {
+      return `${userCount} ${userCount === 1 ? 'person' : 'people'} can sign in to this Engram. Everyone here can manage accounts.`
+    }
+    return SETTINGS_SECTIONS[id].description
+  }
 
   // Sections backed by GET /settings/llm. After a failed load they show only the
   // error (their forms would otherwise save defaults over the real values); after a
-  // failed refresh they keep the last values under a warning. Add-ins and System
+  // failed refresh they keep the last values under a warning. The other sections
   // don't use this request and keep working either way.
-  const needsSettings = (body: ReactNode) => !loadError ? body : (
+  const needsSettings = (body: (s: LLMSettings) => ReactNode) => (
     <div className="space-y-3">
-      <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-500/30
-                                   bg-red-500/10 px-4 py-3 text-xs text-red-400 [.light_&]:text-red-700">
-        <span>{settings
-          ? "Couldn't refresh your settings, so what you see may be out of date."
-          : "Couldn't load your settings."}</span>
-        <ActionButton onClick={retry} busy={retrying}>Retry</ActionButton>
-      </div>
-      {settings && body}
+      {loadError && (
+        <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-500/30
+                                     bg-red-500/10 px-4 py-3 text-xs text-red-400 [.light_&]:text-red-700">
+          <span>{settings
+            ? "Couldn't refresh your settings, so what you see may be out of date."
+            : "Couldn't load your settings."}</span>
+          <ActionButton onClick={retry} busy={retrying}>Retry</ActionButton>
+        </div>
+      )}
+      {settings && body(settings)}
     </div>
   )
 
   const panels: Record<string, ReactNode> = {
-    models: needsSettings(
-      <div className="space-y-5">
-        {!anyProviderEnabled && (
-          <p className="text-xs text-dark-text-secondary">No provider is enabled yet. Turn one on to start chatting.</p>
+    models: needsSettings(s => <ModelsSection settings={s} onUpdate={refreshSettings} />),
+    web: needsSettings(s => (
+      <div className="space-y-3">
+        <BraveSearchSettings config={s.brave_search} onUpdate={refreshSettings} />
+        <Neo4jSettings config={s.neo4j} onUpdate={refreshSettings} />
+        {webSearchAddinOn && (
+          <InfoNote>
+            The Web Search add-in (Tavily or SerpAPI) is separate from Brave Search.{' '}
+            <button type="button" onClick={() => open('addins')} className="text-dark-accent-primary hover:underline">
+              Manage it in Add-ins
+            </button>
+          </InfoNote>
         )}
-        {providerGroup('Cloud API', <Cloud size={12} />, cloudProviders)}
-        {providerGroup('Local', <Monitor size={12} />, localProviders)}
       </div>
-    ),
-    search: needsSettings(
+    )),
+    email: needsSettings(s => (
       <div className="space-y-3">
-        <BraveSearchSettings config={settings?.brave_search} onUpdate={refreshSettings} />
-        <Neo4jSettings config={settings?.neo4j} onUpdate={refreshSettings} />
+        <button type="button" onClick={() => setActiveTab('notifications')}
+                className="text-xs text-dark-accent-primary hover:underline min-h-[40px] sm:min-h-0">
+          View sent and scheduled emails ›
+        </button>
+        <EmailSettings config={s.email} onUpdate={refreshSettings} />
       </div>
-    ),
-    email: needsSettings(<EmailSettings config={settings?.email} onUpdate={refreshSettings} />),
-    performance: needsSettings(<OptimizationSettings config={settings?.optimization} onUpdate={refreshSettings} />),
-    addins: <AddinsSettings addins={addins} onRefresh={fetchAddins} />,
-    system: (
-      <div className="space-y-3">
-        <SettingsCard title="Logging" subtitle="Log levels and live log viewer" icon={<ScrollText size={14} />}
-                      open={loggingOpen} onOpenChange={setLoggingOpen} keepMounted>
-          {loggingOpen && <LoggingSettings />}
-          {/* Stays mounted so pause and filters survive; it only fetches and streams while on screen */}
-          <LogViewer active={section === 'system' && loggingOpen} />
-        </SettingsCard>
-        <SettingsCard title="Data management" subtitle="Import and export your data" icon={<Database size={14} />} defaultOpen>
-          <DataManagement />
-        </SettingsCard>
-      </div>
-    ),
+    )),
+    addins: <AddinsSection active={section === 'addins'} />,
+    account: <AccountSection />,
+    users: <UsersSection active={section === 'users'} onCount={setUserCount} />,
+    data: <DataSection active={section === 'data'} />,
   }
+
+  const listView = settingsView === 'list'
 
   return (
     <div className="h-full overflow-y-auto">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-        {/* Header */}
-        <div className="flex items-center gap-3 mb-5">
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4 md:py-8">
+        {/* Header (desktop; phones show the title in the top bar) */}
+        <div className="hidden md:flex items-center gap-3 mb-6">
           <div className="p-2 rounded-lg bg-dark-accent-primary/10">
             <Settings size={20} className="text-dark-accent-primary" />
           </div>
-          <div>
+          <div className="min-w-0">
             <h1 className="text-xl font-semibold text-dark-text-primary">Settings</h1>
-            <p className="text-sm text-dark-text-secondary">
-              {!settings ? null : activeProvider
-                ? <>LLM: <span className="text-dark-text-primary font-medium">{PROVIDER_DISPLAY[activeProvider] || activeProvider}</span></>
-                : 'No LLM provider active'
-              }
-              {enabledAddins > 0 && (
-                <span className="ml-2">· {enabledAddins} add-in{enabledAddins !== 1 ? 's' : ''} active</span>
-              )}
-            </p>
+            {statusParts.length > 0 && <p className="text-sm text-dark-text-secondary">{statusParts.join(' · ')}</p>}
           </div>
         </div>
 
-        <div className="md:flex md:items-start md:gap-6">
-          {/* Section navigation: scrollable tabs on phones, a rail on desktop */}
-          <div
-            role="tablist"
-            aria-label="Settings sections"
-            className="sticky top-0 z-10 -mx-4 px-4 py-2 mb-3 flex gap-1 overflow-x-auto bg-dark-bg-primary
-                       md:mx-0 md:px-0 md:py-0 md:mb-0 md:flex-col md:w-48 md:flex-shrink-0 md:overflow-visible md:bg-transparent"
-          >
-            {SECTIONS.map((s, i) => {
-              const selected = s.id === section
-              return (
-                <button
-                  key={s.id}
-                  ref={el => { tabRefs.current[s.id] = el }}
-                  role="tab"
-                  id={`settings-tab-${s.id}`}
-                  aria-selected={selected}
-                  aria-controls={`settings-panel-${s.id}`}
-                  tabIndex={selected ? 0 : -1}
-                  onClick={() => setSettingsSection(s.id)}
-                  onKeyDown={e => onTabKeyDown(e, i)}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm whitespace-nowrap flex-shrink-0
-                              transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-dark-accent-primary ${
-                    selected
-                      ? 'bg-dark-bg-secondary text-dark-text-primary font-medium'
-                      : 'text-dark-text-secondary hover:bg-dark-bg-secondary hover:text-dark-text-primary'
-                  }`}
-                >
-                  {s.icon}
-                  <span>{s.label}</span>
-                </button>
-              )
-            })}
-          </div>
-
-          {/* Panels stay mounted (hidden) so unsaved input survives switching sections */}
-          <div className="flex-1 min-w-0 pb-12">
-            {SECTIONS.map(s => (
-              <div
-                key={s.id}
-                role="tabpanel"
-                id={`settings-panel-${s.id}`}
-                aria-labelledby={`settings-tab-${s.id}`}
-                hidden={s.id !== section}
-              >
-                <div className="mb-4">
-                  <h2 className="text-base font-semibold text-dark-text-primary">{s.label}</h2>
-                  <p className="text-xs text-dark-text-secondary mt-0.5">{s.description}</p>
-                </div>
-                {panels[s.id]}
+        <div className="md:flex md:items-start md:gap-8">
+          {/* Desktop: grouped rail */}
+          <nav aria-label="Settings sections" className="hidden md:block md:w-52 md:flex-shrink-0 md:sticky md:top-0 space-y-4">
+            {GROUPS.map(g => (
+              <div key={g.label} role="group" aria-labelledby={`settings-group-${g.label}`}>
+                <p id={`settings-group-${g.label}`} className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider text-dark-text-secondary">
+                  {g.label}
+                </p>
+                {g.ids.map(id => {
+                  const selected = id === section
+                  return (
+                    <button
+                      key={id}
+                      ref={el => { railRefs.current[id] = el }}
+                      type="button"
+                      aria-current={selected ? 'page' : undefined}
+                      tabIndex={selected ? 0 : -1}
+                      onClick={() => open(id)}
+                      onKeyDown={e => onRailKeyDown(e, ORDER.indexOf(id))}
+                      className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors
+                                  focus:outline-none focus-visible:ring-2 focus-visible:ring-dark-accent-primary ${
+                        selected
+                          ? 'bg-dark-bg-secondary text-dark-text-primary font-medium'
+                          : 'text-dark-text-secondary hover:bg-dark-bg-secondary hover:text-dark-text-primary'
+                      }`}
+                    >
+                      {SETTINGS_SECTIONS[id].icon}
+                      <span>{SETTINGS_SECTIONS[id].label}</span>
+                    </button>
+                  )
+                })}
               </div>
             ))}
+          </nav>
+
+          {/* Phones: the section list comes first */}
+          {listView && (
+            <nav aria-label="Settings sections" className="md:hidden space-y-5">
+              {statusParts.length > 0 && <p className="text-xs text-dark-text-secondary">{statusParts.join(' · ')}</p>}
+              {GROUPS.map(g => (
+                <div key={g.label} role="group" aria-labelledby={`settings-list-${g.label}`}>
+                  <p id={`settings-list-${g.label}`} className="mb-1 text-[10px] font-semibold uppercase tracking-wider text-dark-text-secondary">
+                    {g.label}
+                  </p>
+                  <div className="rounded-lg border border-dark-border/60 bg-dark-bg-secondary/50 divide-y divide-dark-border/40">
+                    {g.ids.map(id => (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => open(id)}
+                        className="w-full min-h-[48px] flex items-center gap-3 px-4 py-3 text-left text-sm text-dark-text-primary
+                                   focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-dark-accent-primary"
+                      >
+                        <span className="text-dark-text-secondary">{SETTINGS_SECTIONS[id].icon}</span>
+                        <span className="flex-1">{SETTINGS_SECTIONS[id].label}</span>
+                        <span className="text-xs text-dark-text-secondary truncate max-w-[45%]">{rowStatus[id]}</span>
+                        <ChevronRight size={16} className="text-dark-text-secondary flex-shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </nav>
+          )}
+
+          {/* Sections stay mounted (hidden) so unsaved input survives switching */}
+          <div className={`flex-1 min-w-0 max-w-3xl pb-12 ${listView ? 'hidden md:block' : ''}`}>
+            {ORDER.map(id => (
+              <section key={id} aria-labelledby={`settings-heading-${id}`} hidden={id !== section}>
+                <div className="mb-4">
+                  <h2 id={`settings-heading-${id}`} className="text-base font-semibold text-dark-text-primary">
+                    {SETTINGS_SECTIONS[id].label}
+                  </h2>
+                  <p className="text-xs text-dark-text-secondary mt-0.5">{description(id)}</p>
+                </div>
+                {panels[id]}
+              </section>
+            ))}
           </div>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-
-const TYPE_LABELS: Record<string, string> = {
-  tool: 'Tool',
-  gui: 'GUI',
-  interceptor: 'Pipeline',
-  hybrid: 'Hybrid',
-}
-
-/**
- * Addins settings — one card per add-in with an enable switch and its
- * dynamic settings. Each addin declares its own settings schema via
- * get_settings_schema(); the renderer discovers and renders them generically.
- */
-function AddinsSettings({ addins, onRefresh }: { addins: Addin[]; onRefresh: () => void }) {
-  const [toggleState, runToggle] = useAction()
-  const [busyId, setBusyId] = useState<string | null>(null)
-
-  const handleToggle = (addin: Addin) => {
-    setBusyId(addin.id)
-    runToggle(async () => {
-      await addinsApi.toggle(addin.id)
-      onRefresh()
-    }, `${addin.name} ${addin.enabled ? 'disabled' : 'enabled'}`, `Couldn't change ${addin.name}`)
-      .finally(() => setBusyId(null))
-  }
-
-  if (addins.length === 0) {
-    return (
-      <p className="text-xs text-dark-text-secondary italic py-2">
-        No add-ins installed. Add-ins appear here when placed in the plugins directory.
-      </p>
-    )
-  }
-
-  return (
-    <div className="space-y-2">
-      <ActionStatus state={toggleState} />
-      {addins.map(addin => (
-        <SettingsCard
-          key={addin.internal_name || addin.id}
-          title={addin.name}
-          subtitle={addin.description}
-          badges={<>
-            <Badge>{TYPE_LABELS[addin.addin_type] || addin.addin_type}</Badge>
-            <span className="text-[10px] text-dark-text-secondary">v{addin.version}</span>
-          </>}
-          enabled={addin.enabled}
-          onToggle={() => handleToggle(addin)}
-          toggleDisabled={busyId === addin.id}
-        >
-          {addin.enabled
-            ? <AddinSettingsRenderer addinName={addin.internal_name} />
-            : <p className="text-xs text-dark-text-secondary italic">Enable this add-in to configure its settings.</p>}
-        </SettingsCard>
-      ))}
-    </div>
-  )
-}
-
-
-/** Import/Export panel for user data. */
-function DataManagement() {
-  const fileRef = useRef<HTMLInputElement>(null)
-  const [importing, setImporting] = useState(false)
-  const [importResult, setImportResult] = useState<string | null>(null)
-  const [importError, setImportError] = useState<string | null>(null)
-  const [exportState, runExport] = useAction()
-
-  const token = useAuthStore.getState().token
-
-  /** Handle ChatGPT import file selection */
-  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    setImporting(true)
-    setImportResult(null)
-    setImportError(null)
-
-    try {
-      const formData = new FormData()
-      formData.append('file', file)
-
-      const res = await fetch('/api/data/import/chatgpt', {
-        method: 'POST',
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-        body: formData,
-      })
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: 'Import failed' }))
-        throw new Error(err.detail || 'Import failed')
-      }
-
-      const data = await res.json()
-      setImportResult(
-        `Imported ${data.imported.conversations} conversations with ${data.imported.messages} messages` +
-        (data.skipped > 0 ? ` (${data.skipped} empty skipped)` : '')
-      )
-    } catch (err) {
-      setImportError(err instanceof Error ? err.message : 'Import failed')
-    } finally {
-      setImporting(false)
-      if (fileRef.current) fileRef.current.value = ''
-    }
-  }
-
-  /** Download full data export as ZIP */
-  const handleExport = () => runExport(async () => {
-    const res = await fetch('/api/data/export', {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    })
-    if (!res.ok) throw new Error(`server returned ${res.status}`)
-
-    const blob = await res.blob()
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = res.headers.get('content-disposition')?.match(/filename="(.+)"/)?.[1] || 'engram_export.zip'
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    URL.revokeObjectURL(url)
-  }, 'Export downloaded', 'Export failed')
-
-  return (
-    <div className="space-y-3">
-      {/* ChatGPT Import */}
-      <div className="rounded-lg border border-dark-border bg-dark-bg-primary/40 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-medium text-dark-text-primary">Import from ChatGPT</h3>
-            <p className="text-xs text-dark-text-secondary mt-1">
-              Upload your ChatGPT export (ZIP or conversations.json) to import all conversations.
-            </p>
-          </div>
-          <div className="flex-shrink-0">
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".zip,.json"
-              onChange={handleImport}
-              className="sr-only"
-              id="chatgpt-import"
-            />
-            <label
-              htmlFor="chatgpt-import"
-              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-md text-xs font-medium
-                         cursor-pointer transition-colors
-                         ${importing
-                           ? 'bg-dark-border text-dark-text-secondary cursor-wait'
-                           : 'bg-dark-accent-primary hover:bg-dark-accent-hover text-white'}`}
-            >
-              {importing ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-              {importing ? 'Importing...' : 'Import'}
-            </label>
-          </div>
-        </div>
-        {importResult && (
-          <div role="status" className="mt-3 p-2 rounded bg-green-500/10 border border-green-500/30 text-green-400 [.light_&]:text-green-700 text-xs flex items-center gap-2">
-            <Check size={14} />
-            {importResult}
-          </div>
-        )}
-        {importError && (
-          <div role="alert" className="mt-3 p-2 rounded bg-red-500/10 border border-red-500/30 text-red-400 [.light_&]:text-red-700 text-xs">
-            {importError}
-          </div>
-        )}
-      </div>
-
-      {/* Export All Data */}
-      <div className="rounded-lg border border-dark-border bg-dark-bg-primary/40 p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h3 className="text-sm font-medium text-dark-text-primary">Export all data</h3>
-            <p className="text-xs text-dark-text-secondary mt-1">
-              Download all your conversations, memories, notes, and settings as a ZIP file.
-            </p>
-            <div className="mt-1"><ActionStatus state={exportState} /></div>
-          </div>
-          <ActionButton onClick={handleExport} busy={exportState.status === 'busy'}>
-            {exportState.status !== 'busy' && <Download size={14} />}
-            {exportState.status === 'busy' ? 'Exporting...' : 'Export'}
-          </ActionButton>
         </div>
       </div>
     </div>

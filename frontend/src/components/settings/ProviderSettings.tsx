@@ -1,116 +1,119 @@
 /**
- * Individual provider settings card.
- * Enable switch (one provider is active at a time; the backend disables the
- * others), API key / base URL, the model list and default-model choice.
+ * One provider in the Models radio list.
  *
- * @param provider - Provider key (e.g. 'openai', 'anthropic')
- * @param config - Current provider configuration from the backend
- * @param defaultModel - The user's default model, highlighted in the list
- * @param onUpdate - Callback to refresh parent settings after save
+ * Choosing the radio makes this the provider new chats use (it saves at once).
+ * A cloud provider without a saved key can't be chosen until a key is saved,
+ * so "In use" never points at a provider that can't answer. The expanded row
+ * holds the key / server URL (drafts until Save), the model list, Test and Save.
+ *
+ * Request shapes follow backend/routers/settings.py (see activateProvider).
  */
 
-import { useState, useEffect } from 'react'
-import { RefreshCw, Zap } from 'lucide-react'
+import { useState, useEffect, useId, useRef } from 'react'
+import { RefreshCw } from 'lucide-react'
 import { settingsApi } from '../../services/api'
 import { friendlyModelName } from '../../utils/modelNames'
-import type { ProviderConfig } from '../../types/chat.types'
-import { ActionButton, ActionStatus, Badge, SettingsCard, TextField, useAction } from './primitives'
+import { providerMeta } from '../../utils/providers'
+import type { LLMSettings, ProviderConfig } from '../../types/chat.types'
+import {
+  ActionButton, ActionRow, ActionStatus, Disclosure, ErrorStatus, InfoNote, PasswordField, StatusPill,
+  TextField, UnsavedPill, useAction, useDirty, type CardStatus,
+} from './primitives'
+
+/**
+ * Make `provider` the one new chats use, optionally with a specific model.
+ *
+ * The backend replaces a provider's base URL with whatever is sent, so the
+ * current URL always goes along. Enabling a provider that was off also resets
+ * the default model to its first cached model and ignores a model sent in the
+ * same request, so the default is set in a second request when it differs.
+ */
+export async function activateProvider(
+  provider: string,
+  before: LLMSettings,
+  opts: { apiKey?: string; baseUrl?: string; model?: string } = {},
+) {
+  const after: LLMSettings = await settingsApi.updateLLMSettings({
+    providers: { [provider]: { enabled: true, api_key: opts.apiKey || undefined, base_url: opts.baseUrl || undefined } },
+  })
+  const keepCurrent = before.default_provider === provider ? before.default_model : undefined
+  const model = opts.model ?? keepCurrent ?? after.providers[provider]?.available_models?.[0] ?? ''
+  if (after.default_provider !== provider || (after.default_model ?? '') !== model) {
+    await settingsApi.updateLLMSettings({ default_provider: provider, default_model: model })
+  }
+}
 
 interface Props {
   provider: string
   config: ProviderConfig
-  defaultModel?: string
+  settings: LLMSettings
+  /** This provider is the one new chats use */
+  inUse: boolean
+  /** Chosen while it still needs a key: the radio waits for Save */
+  pending: boolean
+  onPendingChange: (pending: boolean) => void
   onUpdate: () => void
 }
 
-/** Provider metadata: display name, description, default URL, whether it needs an API key */
-const PROVIDER_META: Record<string, {
-  name: string
-  description: string
-  defaultUrl: string
-  needsApiKey: boolean
-}> = {
-  openai: {
-    name: 'OpenAI',
-    description: 'GPT-4o, GPT-4, GPT-3.5 Turbo',
-    defaultUrl: 'https://api.openai.com/v1',
-    needsApiKey: true,
-  },
-  anthropic: {
-    name: 'Anthropic',
-    description: 'Claude Sonnet 4, Opus 4, Haiku',
-    defaultUrl: 'https://api.anthropic.com',
-    needsApiKey: true,
-  },
-  lmstudio: {
-    name: 'LM Studio',
-    description: 'Local models via LM Studio server',
-    defaultUrl: 'http://host.docker.internal:1234/v1',
-    needsApiKey: false,
-  },
-  ollama: {
-    name: 'Ollama',
-    description: 'Local models via Ollama',
-    defaultUrl: 'http://host.docker.internal:11434',
-    needsApiKey: false,
-  },
-}
-
-export default function ProviderSettings({ provider, config, defaultModel, onUpdate }: Props) {
+export default function ProviderSettings({ provider, config, settings, inUse, pending, onPendingChange, onUpdate }: Props) {
+  const meta = providerMeta(provider)
+  const savedUrl = config?.base_url || ''
   const [apiKey, setApiKey] = useState('')
-  const [baseUrl, setBaseUrl] = useState(config?.base_url || '')
-  const [isEnabled, setIsEnabled] = useState(config?.enabled || false)
+  const [baseUrl, setBaseUrl] = useState(savedUrl)
   const [models, setModels] = useState<string[]>(config?.available_models || [])
-  const [isOpen, setIsOpen] = useState(config?.enabled || false)
+  const [isOpen, setIsOpen] = useState(inUse)
   const [saveState, runSave] = useAction()
   const [testState, runTest, resetTest] = useAction({ sticky: true })
   // A test result describes the values it was run with; editing them clears it
   useEffect(() => { resetTest() }, [apiKey, baseUrl, resetTest])
-  const [toggleState, runToggle] = useAction()
+  const [selectState, runSelect] = useAction()
   const [modelState, runModel] = useAction()
+  const keyRef = useRef<HTMLInputElement>(null)
+  const statusId = useId()
 
-  // Sync from the backend after a refresh, one value per effect. A single effect
-  // keyed on the models array re-ran on every refresh (a new array each time) and
-  // wiped a base URL the user was still typing.
-  useEffect(() => { setIsEnabled(config?.enabled || false) }, [config?.enabled])
-  useEffect(() => { setBaseUrl(config?.base_url || '') }, [config?.base_url])
+  // Sync from the backend after a refresh, one value per effect, so a refresh
+  // doesn't wipe a URL that is still being typed
+  useEffect(() => { setBaseUrl(savedUrl) }, [savedUrl])
   const modelsKey = (config?.available_models || []).join('\n')
   useEffect(() => { setModels(modelsKey ? modelsKey.split('\n') : []) }, [modelsKey])
 
-  const meta = PROVIDER_META[provider] || {
-    name: provider, description: '', defaultUrl: '', needsApiKey: false
+  const dirty = apiKey !== '' || baseUrl !== savedUrl
+  useDirty(dirty)
+
+  const hasKey = !meta.needsApiKey || !!config?.api_key_set
+  const defaultModel = settings.default_provider === provider ? settings.default_model : undefined
+
+  // Radio: switch now, or (no key yet) open the row and ask for one first
+  const select = () => {
+    if (inUse) return
+    if (!hasKey && !apiKey) {
+      onPendingChange(true)
+      setIsOpen(true)
+      setTimeout(() => keyRef.current?.focus(), 0)
+      return
+    }
+    runSelect(async () => {
+      await activateProvider(provider, settings, { apiKey, baseUrl })
+      setApiKey('')
+      onPendingChange(false)
+      onUpdate()
+    }, `Now using ${meta.name}`, `Couldn't switch to ${meta.name}`)
   }
 
-  const save = (enabled: boolean) => settingsApi.updateLLMSettings({
-    providers: {
-      [provider]: {
-        enabled,
-        api_key: apiKey || undefined,
-        base_url: baseUrl || undefined,
-      }
-    }
-  })
-
+  // Save: a pending or in-use provider is (re)activated with the typed values;
+  // any other provider stays off, as only one provider is on at a time
   const handleSave = () => runSave(async () => {
-    await save(isEnabled)
+    if (inUse || pending) {
+      await activateProvider(provider, settings, { apiKey, baseUrl })
+      onPendingChange(false)
+    } else {
+      await settingsApi.updateLLMSettings({
+        providers: { [provider]: { enabled: false, api_key: apiKey || undefined, base_url: baseUrl || undefined } },
+      })
+    }
     setApiKey('')
     onUpdate()
-  })
-
-  // Enabling/disabling saves immediately; the switch reverts if that fails
-  const handleToggle = (next: boolean) => {
-    setIsEnabled(next)
-    if (next) setIsOpen(true)
-    runToggle(async () => {
-      try {
-        await save(next)
-      } catch (error) {
-        setIsEnabled(!next)
-        throw error
-      }
-      onUpdate()
-    }, next ? `${meta.name} enabled` : `${meta.name} disabled`)
-  }
+  }, pending ? `Saved. Now using ${meta.name}` : 'Saved')
 
   const handleTest = () => runTest(async () => {
     const result = await settingsApi.testConnection(provider, apiKey, baseUrl)
@@ -122,103 +125,164 @@ export default function ProviderSettings({ provider, config, defaultModel, onUpd
     setModels(data.map((m: { id: string }) => m.id))
   }, 'Model list refreshed', "Couldn't load models")
 
-  const handleDefaultModel = (model: string) => runModel(async () => {
-    await settingsApi.updateLLMSettings({ default_provider: provider, default_model: model })
+  // In use: the model becomes the default. Otherwise switch to this provider with that model.
+  const pickModel = (model: string) => runModel(async () => {
+    if (inUse) {
+      await settingsApi.updateLLMSettings({ default_provider: provider, default_model: model })
+    } else {
+      await activateProvider(provider, settings, { apiKey, baseUrl, model })
+      setApiKey('')
+      onPendingChange(false)
+    }
     onUpdate()
-  }, `Default model: ${friendlyModelName(model)}`)
+  }, inUse ? `New chats use ${friendlyModelName(model)}` : `Now using ${meta.name} · ${friendlyModelName(model)}`)
+
+  const status: CardStatus = inUse ? (hasKey ? 'in-use' : 'needs-setup') : pending ? 'needs-setup' : 'off'
+  const keyStatus = !meta.needsApiKey
+    ? 'On this computer'
+    : config?.api_key_set ? `Key saved · ${config.api_key_masked ?? ''}` : 'Needs an API key'
+  const saveBlocked = pending && !apiKey && !hasKey
 
   return (
-    <SettingsCard
-      title={meta.name}
-      subtitle={meta.description}
-      enabled={isEnabled}
-      onToggle={handleToggle}
-      toggleDisabled={toggleState.status === 'busy'}
-      open={isOpen}
-      onOpenChange={setIsOpen}
-      badges={isEnabled ? <Badge tone="green"><Zap size={8} /> Active</Badge> : undefined}
-      aside={models.length > 0 ? <Badge>{models.length} model{models.length !== 1 ? 's' : ''}</Badge> : undefined}
-    >
-      <ActionStatus state={toggleState.status === 'error' ? toggleState : { status: 'idle' }} />
+    <div className={`rounded-lg border transition-colors ${
+      inUse ? 'bg-dark-bg-secondary border-dark-accent-primary/40' : 'bg-dark-bg-secondary/50 border-dark-border/60'
+    }`}>
+      <div className="flex items-center gap-3 px-4 py-3">
+        <label className="flex-1 min-w-0 flex items-center gap-3 cursor-pointer">
+          <input
+            type="radio"
+            name="llm-provider"
+            value={provider}
+            checked={inUse}
+            onChange={select}
+            aria-label={meta.name}
+            aria-describedby={statusId}
+            disabled={selectState.status === 'busy'}
+            className="w-4 h-4 flex-shrink-0 accent-dark-accent-primary cursor-pointer"
+          />
+          <span className="min-w-0">
+            <span className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-medium text-dark-text-primary">{meta.name}</span>
+              <span id={statusId} className="contents">
+                <StatusPill status={status} />
+                {dirty && <UnsavedPill />}
+                <span className="sr-only">. {keyStatus}</span>
+              </span>
+            </span>
+            <span aria-hidden className="block text-[11px] text-dark-text-secondary truncate">{keyStatus}</span>
+          </span>
+        </label>
+        <button
+          type="button"
+          onClick={() => setIsOpen(!isOpen)}
+          aria-expanded={isOpen}
+          aria-label={`${hasKey ? 'Edit' : 'Set up'} ${meta.name}`}
+          className="flex-shrink-0 px-2 py-1.5 min-h-[40px] sm:min-h-0 rounded text-xs text-dark-accent-primary hover:underline
+                     focus:outline-none focus-visible:ring-2 focus-visible:ring-dark-accent-primary"
+        >
+          {hasKey ? 'Edit' : 'Set up'} {isOpen ? '▾' : '›'}
+        </button>
+      </div>
+      <div className="px-4"><ErrorStatus state={selectState} /></div>
 
-      {meta.needsApiKey && (
-        <TextField
-          label="API key"
-          type="password"
-          value={apiKey}
-          onChange={setApiKey}
-          placeholder={config?.api_key_set ? 'Saved; leave empty to keep it' : 'sk-...'}
-          hint={config?.api_key_masked ? `Current: ${config.api_key_masked}` : undefined}
-        />
-      )}
+      {isOpen && (
+        <div className="px-4 pb-4 pt-3 space-y-3 border-t border-dark-border/40">
+          {pending && (
+            <InfoNote>Add your {meta.name} API key, then Save to start using {meta.name}.</InfoNote>
+          )}
 
-      {meta.defaultUrl && (
-        <TextField
-          label={meta.needsApiKey ? 'Base URL' : 'Server URL'}
-          type="url"
-          value={baseUrl}
-          onChange={setBaseUrl}
-          placeholder={meta.defaultUrl}
-        />
-      )}
+          {meta.needsApiKey && (
+            <PasswordField
+              ref={keyRef}
+              label="API key"
+              value={apiKey}
+              onChange={setApiKey}
+              placeholder={config?.api_key_set ? 'Paste a new key to replace it' : meta.keyPlaceholder}
+              hint={config?.api_key_set
+                ? `Key saved · ${config.api_key_masked ?? ''}. Leave empty to keep it.`
+                : meta.keyUrl ? <>Get a key at <a href={meta.keyUrl} target="_blank" rel="noopener noreferrer"
+                    className="text-dark-accent-primary hover:underline">{new URL(meta.keyUrl).host}</a></> : undefined}
+            />
+          )}
 
-      {/* Models: pick the default */}
-      <div>
-        <div className="flex items-center justify-between mb-1">
-          <span className="text-xs font-medium text-dark-text-secondary">Default model</span>
-          <button
-            type="button"
-            onClick={handleRefreshModels}
-            disabled={modelState.status === 'busy'}
-            aria-label="Refresh models"
-            title="Refresh models"
-            className="p-1 rounded text-dark-accent-primary hover:text-dark-accent-hover transition-colors disabled:opacity-50"
-          >
-            <RefreshCw size={12} className={modelState.status === 'busy' ? 'animate-spin' : ''} />
-          </button>
-        </div>
-        {models.length > 0 ? (
-          <div className="flex flex-wrap gap-1 max-h-40 overflow-y-auto" role="group" aria-label={`${meta.name} models`}>
-            {models.map(m => {
-              const isDefault = m === defaultModel
-              return (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => handleDefaultModel(m)}
-                  disabled={!isEnabled || modelState.status === 'busy'}
-                  aria-pressed={isDefault}
-                  title={!isEnabled
-                    ? 'Enable this provider to choose its default model'
-                    : isDefault ? `${m} (default)` : `Use ${friendlyModelName(m)} by default`}
-                  className={`text-[11px] px-2 py-1 rounded border transition-colors
-                              disabled:cursor-not-allowed disabled:opacity-60 ${
-                    isDefault
-                      ? 'bg-dark-accent-primary/15 border-dark-accent-primary text-dark-text-primary font-medium'
-                      : 'bg-dark-bg-primary border-transparent text-dark-text-secondary hover:border-dark-border hover:text-dark-text-primary'
-                  }`}
-                >
-                  {friendlyModelName(m)}
-                </button>
-              )
-            })}
+          {meta.needsApiKey ? (
+            <Disclosure summary="Advanced: base URL" defaultOpen={!!savedUrl}>
+              <TextField label="Base URL" type="url" value={baseUrl} onChange={setBaseUrl} placeholder={meta.defaultUrl}
+                         hint="Only change this for a proxy or a compatible service." />
+            </Disclosure>
+          ) : (
+            <TextField label="Server URL" type="url" value={baseUrl} onChange={setBaseUrl} placeholder={meta.defaultUrl}
+                       hint={`Leave empty for the default (${meta.defaultUrl}).`} />
+          )}
+
+          {/* Models */}
+          <div>
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <span className="text-xs font-medium text-dark-text-secondary">
+                {models.length > 0 ? `${models.length} model${models.length !== 1 ? 's' : ''}` : 'Models'}
+              </span>
+              <button
+                type="button"
+                onClick={handleRefreshModels}
+                disabled={modelState.status === 'busy'}
+                className="inline-flex items-center gap-1 px-2 py-1 min-h-[36px] sm:min-h-0 rounded text-xs text-dark-accent-primary
+                           hover:underline disabled:opacity-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-dark-accent-primary"
+              >
+                <RefreshCw size={12} className={modelState.status === 'busy' ? 'animate-spin' : ''} /> Refresh
+              </button>
+            </div>
+            {models.length > 0 ? (
+              <>
+                {!inUse && (
+                  <p className="text-[11px] text-dark-text-secondary mb-1">
+                    {hasKey ? `Pick a model to switch to ${meta.name} with it.` : `Save a key first to use ${meta.name}.`}
+                  </p>
+                )}
+                <div className="flex flex-wrap gap-1 max-h-40 overflow-y-auto" role="group" aria-label={`${meta.name} models`}>
+                  {models.map(m => {
+                    const isDefault = m === defaultModel
+                    return (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => pickModel(m)}
+                        disabled={modelState.status === 'busy' || (!inUse && !hasKey && !apiKey)}
+                        aria-pressed={isDefault}
+                        title={m}
+                        className={`text-[11px] px-2 py-1.5 sm:py-1 rounded border transition-colors
+                                    disabled:cursor-not-allowed disabled:opacity-60 ${
+                          isDefault
+                            ? 'bg-dark-accent-primary/15 border-dark-accent-primary text-dark-text-primary font-medium'
+                            : 'bg-dark-bg-primary border-transparent text-dark-text-secondary hover:border-dark-border hover:text-dark-text-primary'
+                        }`}
+                      >
+                        {friendlyModelName(m)}{isDefault && ' · default'}
+                      </button>
+                    )
+                  })}
+                </div>
+              </>
+            ) : (
+              <p className="text-xs text-dark-text-secondary italic">
+                {meta.needsApiKey ? 'No models yet. Save your key, then press Refresh.' : 'No models yet. Start the app, then press Refresh.'}
+              </p>
+            )}
+            <ActionStatus state={modelState} />
           </div>
-        ) : (
-          <p className="text-xs text-dark-text-secondary italic">No models detected. Use refresh after saving.</p>
-        )}
-        <ActionStatus state={modelState} />
-      </div>
 
-      <div className="flex items-center gap-2 flex-wrap pt-1">
-        <ActionButton onClick={handleTest} busy={testState.status === 'busy'}>
-          {testState.status === 'busy' ? 'Testing…' : 'Test'}
-        </ActionButton>
-        <ActionButton variant="primary" onClick={handleSave} busy={saveState.status === 'busy'}>
-          {saveState.status === 'busy' ? 'Saving…' : 'Save'}
-        </ActionButton>
-        <ActionStatus state={testState} />
-        <ActionStatus state={saveState} />
-      </div>
-    </SettingsCard>
+          <ActionRow>
+            <ActionButton onClick={handleTest} busy={testState.status === 'busy'}>
+              {testState.status === 'busy' ? 'Testing…' : 'Test'}
+            </ActionButton>
+            <ActionButton variant="primary" onClick={handleSave} busy={saveState.status === 'busy'}
+                          disabled={saveBlocked || (!dirty && !pending)}>
+              {saveState.status === 'busy' ? 'Saving…' : pending ? `Save and use ${meta.name}` : 'Save'}
+            </ActionButton>
+            <ActionStatus state={testState} />
+            <ActionStatus state={saveState} />
+          </ActionRow>
+        </div>
+      )}
+    </div>
   )
 }

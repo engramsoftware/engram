@@ -1,16 +1,20 @@
 /**
- * Brave Search API settings card.
- * Allows users to configure their Brave Search API key for web search.
+ * Web search (Brave Search) card.
+ * The switch saves at once (with a key typed in the field); the key itself
+ * is a draft until Save.
  *
  * @param config - Current Brave Search configuration from the backend
  * @param onUpdate - Callback to refresh parent settings after save
  */
 
 import { useState, useEffect } from 'react'
-import { Globe, Zap } from 'lucide-react'
+import { Globe } from 'lucide-react'
 import { settingsApi } from '../../services/api'
 import type { BraveSearchConfig } from '../../types/chat.types'
-import { ActionButton, ActionStatus, Badge, InfoNote, SettingsCard, TextField, useAction } from './primitives'
+import {
+  ActionButton, ActionRow, ActionStatus, ErrorStatus, InfoNote, PasswordField, SettingsCard,
+  useAction, useDirty, type CardStatus,
+} from './primitives'
 
 interface Props {
   config?: BraveSearchConfig
@@ -29,11 +33,14 @@ export default function BraveSearchSettings({ config, onUpdate }: Props) {
 
   useEffect(() => { setIsEnabled(config?.enabled || false) }, [config?.enabled])
 
+  const dirty = apiKey !== ''
+  useDirty(dirty)
+
   const save = (enabled: boolean) => settingsApi.updateLLMSettings({
     brave_search: { enabled, api_key: apiKey || undefined },
   })
 
-  // Enabling/disabling saves immediately; the switch reverts if that fails
+  // The switch saves at once, including a key typed in the field; it reverts if that fails
   const handleToggle = (next: boolean) => {
     setIsEnabled(next)
     if (next) setIsOpen(true)
@@ -44,8 +51,9 @@ export default function BraveSearchSettings({ config, onUpdate }: Props) {
         setIsEnabled(!next)
         throw error
       }
+      setApiKey('')
       onUpdate()
-    }, next ? 'Web search enabled' : 'Web search disabled')
+    }, next ? 'Web search turned on' : 'Web search turned off', "Couldn't change web search")
   }
 
   const handleSave = () => runSave(async () => {
@@ -59,19 +67,24 @@ export default function BraveSearchSettings({ config, onUpdate }: Props) {
     if (!result.success) throw new Error(result.error || result.message || 'the key was rejected')
   }, 'Connected', 'Test failed')
 
+  const status: CardStatus = !isEnabled ? 'off' : config?.api_key_set ? 'on' : 'needs-setup'
+
   return (
     <SettingsCard
-      title="Brave Search"
-      subtitle="Web search for real-time info (free tier: 1 req/sec)"
+      title="Web search"
+      subtitle="Uses Brave Search for current information. Free key: 2,000 searches a month."
+      meta={config?.api_key_set ? `Key saved · ${config.api_key_masked ?? ''}` : 'No API key saved'}
       icon={<Globe size={14} />}
+      status={status}
+      unsaved={dirty}
       enabled={isEnabled}
       onToggle={handleToggle}
+      toggleLabel="Web search"
       toggleDisabled={toggleState.status === 'busy'}
       open={isOpen}
       onOpenChange={setIsOpen}
-      badges={isEnabled ? <Badge tone="green"><Zap size={8} /> Active</Badge> : undefined}
     >
-      <ActionStatus state={toggleState.status === 'error' ? toggleState : { status: 'idle' }} />
+      <ErrorStatus state={toggleState} />
 
       <InfoNote>
         Get a free API key at{' '}
@@ -83,28 +96,27 @@ export default function BraveSearchSettings({ config, onUpdate }: Props) {
         >
           api-dashboard.search.brave.com
         </a>
-        . Free tier: 2,000 queries/month, 1 query/second.
+        . Free tier: 2,000 queries a month, 1 query a second.
       </InfoNote>
 
-      <TextField
+      <PasswordField
         label="API key"
-        type="password"
         value={apiKey}
         onChange={setApiKey}
-        placeholder={config?.api_key_set ? 'Saved; leave empty to keep it' : 'BSA...'}
-        hint={config?.api_key_masked ? `Current: ${config.api_key_masked}` : undefined}
+        placeholder={config?.api_key_set ? 'Paste a new key to replace it' : 'BSA...'}
+        hint={config?.api_key_set ? `Key saved · ${config.api_key_masked ?? ''}. Leave empty to keep it.` : undefined}
       />
 
-      <div className="flex items-center gap-2 flex-wrap pt-1">
+      <ActionRow>
         <ActionButton onClick={handleTest} busy={testState.status === 'busy'}>
           {testState.status === 'busy' ? 'Testing…' : 'Test'}
         </ActionButton>
-        <ActionButton variant="primary" onClick={handleSave} busy={saveState.status === 'busy'}>
+        <ActionButton variant="primary" onClick={handleSave} busy={saveState.status === 'busy'} disabled={!dirty}>
           {saveState.status === 'busy' ? 'Saving…' : 'Save'}
         </ActionButton>
         <ActionStatus state={testState} />
         <ActionStatus state={saveState} />
-      </div>
+      </ActionRow>
     </SettingsCard>
   )
 }

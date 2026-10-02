@@ -31,12 +31,13 @@ interface LogEntry {
 
 const LOG_LEVELS = ['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] as const
 
+// Light theme uses darker shades so the level text keeps 4.5:1 contrast
 const LEVEL_STYLES: Record<string, { text: string; bg: string; dot: string }> = {
-  DEBUG:    { text: 'text-blue-400',   bg: 'bg-blue-500/10',   dot: 'bg-blue-400' },
-  INFO:     { text: 'text-green-400',  bg: 'bg-green-500/10',  dot: 'bg-green-400' },
-  WARNING:  { text: 'text-yellow-400', bg: 'bg-yellow-500/10', dot: 'bg-yellow-400' },
-  ERROR:    { text: 'text-red-400',    bg: 'bg-red-500/10',    dot: 'bg-red-400' },
-  CRITICAL: { text: 'text-red-300',    bg: 'bg-red-700/10',    dot: 'bg-red-500' },
+  DEBUG:    { text: 'text-blue-400 [.light_&]:text-blue-700',     bg: 'bg-blue-500/10',   dot: 'bg-blue-400' },
+  INFO:     { text: 'text-green-400 [.light_&]:text-green-700',   bg: 'bg-green-500/10',  dot: 'bg-green-400' },
+  WARNING:  { text: 'text-yellow-400 [.light_&]:text-yellow-800', bg: 'bg-yellow-500/10', dot: 'bg-yellow-400' },
+  ERROR:    { text: 'text-red-400 [.light_&]:text-red-700',       bg: 'bg-red-500/10',    dot: 'bg-red-400' },
+  CRITICAL: { text: 'text-red-300 [.light_&]:text-red-800',       bg: 'bg-red-700/10',    dot: 'bg-red-500' },
 }
 
 const API_BASE = '/api'
@@ -211,6 +212,7 @@ export default function LogViewer({ active = true }: { active?: boolean }) {
               : 'text-green-400 bg-green-500/10 hover:bg-green-500/20'
           }`}
           title={isPaused ? 'Resume streaming' : 'Pause streaming'}
+          aria-label={isPaused ? 'Resume streaming' : 'Pause streaming'}
         >
           {isPaused ? <Play size={14} /> : <Pause size={14} />}
         </button>
@@ -221,6 +223,7 @@ export default function LogViewer({ active = true }: { active?: boolean }) {
           className="p-1.5 rounded text-dark-text-secondary hover:text-dark-text-primary
                      hover:bg-dark-bg-primary transition-colors"
           title="Refresh logs"
+          aria-label="Refresh logs"
         >
           <RefreshCw size={14} />
         </button>
@@ -231,6 +234,7 @@ export default function LogViewer({ active = true }: { active?: boolean }) {
           className="p-1.5 rounded text-dark-text-secondary hover:text-red-400
                      hover:bg-red-500/10 transition-colors"
           title="Clear log view"
+          aria-label="Clear log view"
         >
           <Trash2 size={14} />
         </button>
@@ -360,6 +364,7 @@ export default function LogViewer({ active = true }: { active?: boolean }) {
           className="absolute bottom-14 right-6 p-2 rounded-full bg-dark-accent-primary/90 text-white
                      shadow-lg hover:bg-dark-accent-primary transition-colors"
           title="Scroll to bottom"
+          aria-label="Scroll to bottom"
         >
           <ArrowDown size={14} />
         </button>

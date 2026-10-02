@@ -1,7 +1,7 @@
 /**
- * Email notification settings card.
- * Enable switch, SMTP config (Gmail app password), recipient email, and a
- * test button that sends a real test email.
+ * Send-email card (the only card in Settings > Email, so it starts open).
+ * The switch saves at once (with a password typed in the field); the
+ * address, password, recipient, sender name and SMTP server are drafts until Save.
  *
  * @param config - Current email config from the backend (may be undefined)
  * @param onUpdate - Callback to refresh parent settings after save
@@ -11,7 +11,10 @@ import { useState, useEffect } from 'react'
 import { Mail, Send } from 'lucide-react'
 import { settingsApi } from '../../services/api'
 import type { EmailConfig } from '../../types/chat.types'
-import { ActionButton, ActionStatus, Badge, InfoNote, SettingsCard, TextField, useAction } from './primitives'
+import {
+  ActionButton, ActionRow, ActionStatus, Disclosure, ErrorStatus, PasswordField, SettingsCard, TextField,
+  useAction, useDirty, type CardStatus,
+} from './primitives'
 
 interface Props {
   config?: EmailConfig
@@ -19,25 +22,35 @@ interface Props {
 }
 
 export default function EmailSettings({ config, onUpdate }: Props) {
+  const saved = {
+    smtpHost: config?.smtp_host || 'smtp.gmail.com',
+    smtpPort: String(config?.smtp_port || 587),
+    username: config?.username || '',
+    recipient: config?.recipient || '',
+    fromName: config?.from_name || 'Engram',
+  }
   const [isEnabled, setIsEnabled] = useState(config?.enabled || false)
-  const [isOpen, setIsOpen] = useState(config?.enabled || false)
-  const [smtpHost, setSmtpHost] = useState(config?.smtp_host || 'smtp.gmail.com')
-  const [smtpPort, setSmtpPort] = useState(String(config?.smtp_port || 587))
-  const [username, setUsername] = useState(config?.username || '')
+  const [smtpHost, setSmtpHost] = useState(saved.smtpHost)
+  const [smtpPort, setSmtpPort] = useState(saved.smtpPort)
+  const [username, setUsername] = useState(saved.username)
   const [password, setPassword] = useState('')
-  const [recipient, setRecipient] = useState(config?.recipient || '')
-  const [fromName, setFromName] = useState(config?.from_name || 'Engram')
+  const [recipient, setRecipient] = useState(saved.recipient)
+  const [fromName, setFromName] = useState(saved.fromName)
   const [saveState, runSave] = useAction()
   const [testState, runTest] = useAction({ sticky: true })
   const [toggleState, runToggle] = useAction()
 
   // One value per effect, so a refresh only resets a field whose saved value changed
   useEffect(() => { setIsEnabled(config?.enabled || false) }, [config?.enabled])
-  useEffect(() => { setSmtpHost(config?.smtp_host || 'smtp.gmail.com') }, [config?.smtp_host])
-  useEffect(() => { setSmtpPort(String(config?.smtp_port || 587)) }, [config?.smtp_port])
-  useEffect(() => { setUsername(config?.username || '') }, [config?.username])
-  useEffect(() => { setRecipient(config?.recipient || '') }, [config?.recipient])
-  useEffect(() => { setFromName(config?.from_name || 'Engram') }, [config?.from_name])
+  useEffect(() => { setSmtpHost(saved.smtpHost) }, [saved.smtpHost])
+  useEffect(() => { setSmtpPort(saved.smtpPort) }, [saved.smtpPort])
+  useEffect(() => { setUsername(saved.username) }, [saved.username])
+  useEffect(() => { setRecipient(saved.recipient) }, [saved.recipient])
+  useEffect(() => { setFromName(saved.fromName) }, [saved.fromName])
+
+  const dirty = smtpHost !== saved.smtpHost || smtpPort !== saved.smtpPort || username !== saved.username
+    || recipient !== saved.recipient || fromName !== saved.fromName || password !== ''
+  useDirty(dirty)
 
   const fields = () => ({
     smtp_host: smtpHost,
@@ -45,12 +58,12 @@ export default function EmailSettings({ config, onUpdate }: Props) {
     username: username || undefined,
     recipient: recipient || undefined,
     from_name: fromName,
+    password: password || undefined,
   })
 
-  // Enabling/disabling saves immediately; the switch reverts if that fails
+  // The switch saves at once, including what was typed; it reverts if that fails
   const handleToggle = (next: boolean) => {
     setIsEnabled(next)
-    if (next) setIsOpen(true)
     runToggle(async () => {
       try {
         await settingsApi.updateLLMSettings({ email: { enabled: next, ...fields() } })
@@ -58,14 +71,13 @@ export default function EmailSettings({ config, onUpdate }: Props) {
         setIsEnabled(!next)
         throw error
       }
+      setPassword('')
       onUpdate()
-    }, next ? 'Email notifications enabled' : 'Email notifications disabled')
+    }, next ? 'Email turned on' : 'Email turned off', "Couldn't change email")
   }
 
   const handleSave = () => runSave(async () => {
-    await settingsApi.updateLLMSettings({
-      email: { enabled: isEnabled, ...fields(), password: password || undefined },
-    })
+    await settingsApi.updateLLMSettings({ email: { enabled: isEnabled, ...fields() } })
     setPassword('')
     onUpdate()
   })
@@ -75,76 +87,79 @@ export default function EmailSettings({ config, onUpdate }: Props) {
     if (!result.success) throw new Error(result.error || 'the server rejected the message')
   }, 'Sent. Check your inbox', 'Test email failed')
 
+  const status: CardStatus = !isEnabled ? 'off' : config?.password_set ? 'on' : 'needs-setup'
+
   return (
     <SettingsCard
-      title="Email Notifications"
-      subtitle="Engram sends you emails: reminders, summaries, task alerts"
+      title="Send email"
+      subtitle="Reminders, summaries and alerts, sent through your email account."
+      meta={config?.password_set ? 'App password saved' : 'No app password saved'}
       icon={<Mail size={14} />}
+      status={status}
+      unsaved={dirty}
       enabled={isEnabled}
       onToggle={handleToggle}
+      toggleLabel="Send email"
       toggleDisabled={toggleState.status === 'busy'}
-      open={isOpen}
-      onOpenChange={setIsOpen}
-      badges={config?.password_set ? <Badge tone="green">configured</Badge> : undefined}
+      defaultOpen
     >
-      <ActionStatus state={toggleState.status === 'error' ? toggleState : { status: 'idle' }} />
-
-      <InfoNote>
-        Use a Gmail App Password (not your real password).{' '}
-        <a
-          href="https://myaccount.google.com/apppasswords"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-dark-accent-primary hover:underline"
-        >
-          Generate one here
-        </a>
-        . Engram will email you when it has something to tell you.
-      </InfoNote>
-
-      <TextField label="Gmail address" type="email" value={username} onChange={setUsername} placeholder="you@gmail.com" autoComplete="off" />
+      <ErrorStatus state={toggleState} />
 
       <TextField
+        label="Email address"
+        type="email"
+        value={username}
+        onChange={setUsername}
+        placeholder="you@gmail.com"
+        autoComplete="off"
+        hint="Gmail by default. For another provider, change the mail server under Advanced."
+      />
+
+      <PasswordField
         label="App password"
-        type="password"
         value={password}
         onChange={setPassword}
-        placeholder={config?.password_set ? 'Saved; leave empty to keep it' : '16-character app password'}
-        hint={config?.password_set && config.password_masked ? `Current: ${config.password_masked}` : undefined}
+        placeholder={config?.password_set ? 'Type a new app password to replace it' : '16-character app password'}
+        hint={<>
+          Use a Gmail app password, not your normal password.{' '}
+          <a
+            href="https://myaccount.google.com/apppasswords"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-dark-accent-primary hover:underline"
+          >
+            Get one
+          </a>
+          {config?.password_set && '. A password is saved; leave empty to keep it.'}
+        </>}
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-        <TextField label="Send notifications to" type="email" value={recipient} onChange={setRecipient} placeholder="Same as Gmail if empty" />
+        <TextField label="Send to" type="email" value={recipient} onChange={setRecipient} placeholder="Same as above if empty" />
         <TextField label="Sender name" value={fromName} onChange={setFromName} placeholder="Engram" />
       </div>
 
-      {/* Advanced: SMTP host/port (collapsed by default for Gmail users) */}
-      <details className="text-xs">
-        <summary className="text-dark-text-secondary cursor-pointer hover:text-dark-text-primary transition-colors">
-          Advanced SMTP settings
-        </summary>
-        <div className="grid grid-cols-2 gap-2 mt-2">
+      <Disclosure summary="Advanced: mail server (SMTP)">
+        <div className="grid grid-cols-2 gap-2">
           <TextField label="SMTP host" value={smtpHost} onChange={setSmtpHost} />
           <TextField label="SMTP port" type="number" value={smtpPort} onChange={setSmtpPort} />
         </div>
-      </details>
+      </Disclosure>
 
-      <div className="flex items-center gap-2 flex-wrap pt-1">
-        <ActionButton variant="primary" onClick={handleSave} busy={saveState.status === 'busy'}>
+      <ActionRow>
+        <ActionButton onClick={handleTest} busy={testState.status === 'busy'} disabled={!config?.password_set}>
+          {testState.status !== 'busy' && <Send size={12} />}
+          Send test email
+        </ActionButton>
+        <ActionButton variant="primary" onClick={handleSave} busy={saveState.status === 'busy'} disabled={!dirty}>
           {saveState.status === 'busy' ? 'Saving…' : 'Save'}
         </ActionButton>
-        <ActionButton
-          onClick={handleTest}
-          busy={testState.status === 'busy'}
-          disabled={!config?.password_set}
-          title={!config?.password_set ? 'Save an app password first' : 'Send a test email'}
-        >
-          {testState.status !== 'busy' && <Send size={12} />}
-          Send test
-        </ActionButton>
-        <ActionStatus state={saveState} />
         <ActionStatus state={testState} />
-      </div>
+        <ActionStatus state={saveState} />
+      </ActionRow>
+      {!config?.password_set && (
+        <p className="text-[11px] text-dark-text-secondary">Save an app password first to send a test email.</p>
+      )}
     </SettingsCard>
   )
 }

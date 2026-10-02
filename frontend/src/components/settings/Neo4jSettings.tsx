@@ -1,7 +1,11 @@
 /**
- * Neo4j Knowledge Graph settings card.
- * Enable switch, URI, username, password, database fields, and a test
- * connection button.
+ * Knowledge graph (Neo4j) card.
+ * The switch saves at once (with a password typed in the field); URI,
+ * username, database and password are drafts until Save.
+ *
+ * These saved settings are used by the Knowledge Graph page and the Test
+ * button. Chat reads the server's NEO4J_* values from .env instead, so the
+ * card says so rather than implying it controls chat.
  *
  * @param config - Current Neo4j config from the backend (may be undefined)
  * @param onUpdate - Callback to refresh parent settings after save
@@ -11,7 +15,10 @@ import { useState, useEffect } from 'react'
 import { Share2 } from 'lucide-react'
 import { settingsApi } from '../../services/api'
 import type { Neo4jConfig } from '../../types/chat.types'
-import { ActionButton, ActionStatus, Badge, InfoNote, SettingsCard, TextField, useAction } from './primitives'
+import {
+  ActionButton, ActionRow, ActionStatus, ErrorStatus, InfoNote, PasswordField, SettingsCard, TextField,
+  useAction, useDirty, type CardStatus,
+} from './primitives'
 
 interface Props {
   config?: Neo4jConfig
@@ -19,12 +26,15 @@ interface Props {
 }
 
 export default function Neo4jSettings({ config, onUpdate }: Props) {
+  const savedUri = config?.uri || ''
+  const savedUsername = config?.username || 'neo4j'
+  const savedDatabase = config?.database || 'neo4j'
   const [isEnabled, setIsEnabled] = useState(config?.enabled || false)
   const [isOpen, setIsOpen] = useState(config?.enabled || false)
-  const [uri, setUri] = useState(config?.uri || '')
-  const [username, setUsername] = useState(config?.username || 'neo4j')
+  const [uri, setUri] = useState(savedUri)
+  const [username, setUsername] = useState(savedUsername)
   const [password, setPassword] = useState('')
-  const [database, setDatabase] = useState(config?.database || 'neo4j')
+  const [database, setDatabase] = useState(savedDatabase)
   const [saveState, runSave] = useAction()
   const [testState, runTest, resetTest] = useAction({ sticky: true })
   // A test result describes the values it was run with; editing them clears it
@@ -33,17 +43,21 @@ export default function Neo4jSettings({ config, onUpdate }: Props) {
 
   // One value per effect, so a refresh only resets a field whose saved value changed
   useEffect(() => { setIsEnabled(config?.enabled || false) }, [config?.enabled])
-  useEffect(() => { setUri(config?.uri || '') }, [config?.uri])
-  useEffect(() => { setUsername(config?.username || 'neo4j') }, [config?.username])
-  useEffect(() => { setDatabase(config?.database || 'neo4j') }, [config?.database])
+  useEffect(() => { setUri(savedUri) }, [savedUri])
+  useEffect(() => { setUsername(savedUsername) }, [savedUsername])
+  useEffect(() => { setDatabase(savedDatabase) }, [savedDatabase])
+
+  const dirty = uri !== savedUri || username !== savedUsername || database !== savedDatabase || password !== ''
+  useDirty(dirty)
 
   const fields = () => ({
     uri: uri || undefined,
     username: username || undefined,
     database,
+    password: password || undefined,
   })
 
-  // Enabling/disabling saves immediately; the switch reverts if that fails
+  // The switch saves at once, including what was typed; it reverts if that fails
   const handleToggle = (next: boolean) => {
     setIsEnabled(next)
     if (next) setIsOpen(true)
@@ -54,14 +68,13 @@ export default function Neo4jSettings({ config, onUpdate }: Props) {
         setIsEnabled(!next)
         throw error
       }
+      setPassword('')
       onUpdate()
-    }, next ? 'Knowledge graph enabled' : 'Knowledge graph disabled')
+    }, next ? 'Knowledge graph turned on' : 'Knowledge graph turned off', "Couldn't change the knowledge graph")
   }
 
   const handleSave = () => runSave(async () => {
-    await settingsApi.updateLLMSettings({
-      neo4j: { enabled: isEnabled, ...fields(), password: password || undefined },
-    })
+    await settingsApi.updateLLMSettings({ neo4j: { enabled: isEnabled, ...fields() } })
     setPassword('')
     onUpdate()
   })
@@ -76,23 +89,27 @@ export default function Neo4jSettings({ config, onUpdate }: Props) {
     if (!result.success) throw new Error(result.error || result.message || 'could not connect')
   }, 'Connected', 'Connection failed')
 
+  const status: CardStatus = !isEnabled ? 'off' : config?.password_set ? 'on' : 'needs-setup'
+
   return (
     <SettingsCard
-      title="Neo4j Knowledge Graph"
-      subtitle="Entity relationships and knowledge graph storage"
+      title="Knowledge graph"
+      subtitle="Remembers people, places and topics as a graph. Needs a Neo4j database."
+      meta={config?.password_set ? 'Password saved' : 'No password saved'}
       icon={<Share2 size={14} />}
+      status={status}
+      unsaved={dirty}
       enabled={isEnabled}
       onToggle={handleToggle}
+      toggleLabel="Knowledge graph"
       toggleDisabled={toggleState.status === 'busy'}
       open={isOpen}
       onOpenChange={setIsOpen}
-      badges={config?.password_set ? <Badge tone="green">configured</Badge> : undefined}
     >
-      <ActionStatus state={toggleState.status === 'error' ? toggleState : { status: 'idle' }} />
+      <ErrorStatus state={toggleState} />
 
       <InfoNote>
-        Connect to Neo4j Aura (cloud) or a local Neo4j instance for knowledge graph features.
-        Get a free instance at{' '}
+        Connect to Neo4j Aura (free cloud) or a local Neo4j. Get a free instance at{' '}
         <a
           href="https://neo4j.com/cloud/aura-free/"
           target="_blank"
@@ -101,6 +118,7 @@ export default function Neo4jSettings({ config, onUpdate }: Props) {
         >
           neo4j.com/cloud/aura-free
         </a>
+        . These settings are used by the Knowledge Graph page; chat uses the server's NEO4J settings in its .env file.
       </InfoNote>
 
       <TextField label="Connection URI" value={uri} onChange={setUri} placeholder="neo4j+s://xxxxx.databases.neo4j.io" />
@@ -110,25 +128,24 @@ export default function Neo4jSettings({ config, onUpdate }: Props) {
         <TextField label="Database" value={database} onChange={setDatabase} placeholder="neo4j" />
       </div>
 
-      <TextField
+      <PasswordField
         label="Password"
-        type="password"
         value={password}
         onChange={setPassword}
-        placeholder={config?.password_set ? 'Saved; leave empty to keep it' : 'Enter password'}
-        hint={config?.password_set && config.password_masked ? `Current: ${config.password_masked}` : undefined}
+        placeholder={config?.password_set ? 'Type a new password to replace it' : 'Enter password'}
+        hint={config?.password_set ? 'Password saved. Leave empty to keep it.' : undefined}
       />
 
-      <div className="flex items-center gap-2 flex-wrap pt-1">
-        <ActionButton variant="primary" onClick={handleSave} busy={saveState.status === 'busy'}>
-          {saveState.status === 'busy' ? 'Saving…' : 'Save'}
-        </ActionButton>
+      <ActionRow>
         <ActionButton onClick={handleTest} busy={testState.status === 'busy'}>
           {testState.status === 'busy' ? 'Testing…' : 'Test'}
         </ActionButton>
-        <ActionStatus state={saveState} />
+        <ActionButton variant="primary" onClick={handleSave} busy={saveState.status === 'busy'} disabled={!dirty}>
+          {saveState.status === 'busy' ? 'Saving…' : 'Save'}
+        </ActionButton>
         <ActionStatus state={testState} />
-      </div>
+        <ActionStatus state={saveState} />
+      </ActionRow>
     </SettingsCard>
   )
 }

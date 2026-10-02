@@ -85,8 +85,10 @@ export default function ForgotPasswordPage() {
           )}
 
           <div>
-            <label className="block text-sm text-dark-text-secondary mb-1">Email</label>
+            <label htmlFor="reset-email" className="block text-sm text-dark-text-secondary mb-1">Email</label>
             <input
+              id="reset-email"
+              autoComplete="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -99,8 +101,10 @@ export default function ForgotPasswordPage() {
           </div>
 
           <div>
-            <label className="block text-sm text-dark-text-secondary mb-1">New Password</label>
+            <label htmlFor="reset-password" className="block text-sm text-dark-text-secondary mb-1">New Password</label>
             <input
+              id="reset-password"
+              autoComplete="new-password"
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
@@ -114,8 +118,10 @@ export default function ForgotPasswordPage() {
           </div>
 
           <div>
-            <label className="block text-sm text-dark-text-secondary mb-1">Confirm Password</label>
+            <label htmlFor="reset-confirm" className="block text-sm text-dark-text-secondary mb-1">Confirm Password</label>
             <input
+              id="reset-confirm"
+              autoComplete="new-password"
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}

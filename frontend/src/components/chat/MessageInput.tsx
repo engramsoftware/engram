@@ -219,6 +219,7 @@ export default function MessageInput({ onSend, disabled }: Props) {
                 )}
                 <button
                   onClick={() => removeImage(idx)}
+                  aria-label="Remove attachment"
                   className="absolute top-0.5 right-0.5 w-5 h-5 bg-black/70 rounded-full
                              flex items-center justify-center text-white
                              opacity-0 group-hover:opacity-100 sm:opacity-0 sm:group-hover:opacity-100
@@ -281,6 +282,7 @@ export default function MessageInput({ onSend, disabled }: Props) {
         />
         <button
           onClick={handleSend}
+          aria-label="Send message"
           disabled={disabled || (!content.trim() && pendingImages.length === 0)}
           className="p-2.5 sm:p-3 bg-dark-accent-primary hover:bg-dark-accent-hover
                      rounded-xl text-white disabled:opacity-50 disabled:cursor-not-allowed

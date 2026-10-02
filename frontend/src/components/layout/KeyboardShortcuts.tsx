@@ -52,12 +52,15 @@ export default function KeyboardShortcuts() {
 
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
+      // A menu or dialog already handled this key
+      if (e.defaultPrevented) return
       const mod = isMac ? e.metaKey : e.ctrlKey
 
-      // Don't intercept when typing in inputs (unless it's Escape)
+      // Don't intercept typing. Escape in a field used to fall through and switch
+      // tabs, throwing away whatever was being typed (e.g. an API key in Settings).
       const target = e.target as HTMLElement
-      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
-      if (isInput && e.key !== 'Escape') return
+      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT' || target.isContentEditable
+      if (isInput) return
 
       if (mod && e.key === 'n') {
         e.preventDefault()

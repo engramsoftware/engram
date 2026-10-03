@@ -260,3 +260,120 @@ def test_keyword_extraction_does_not_depend_on_hash_seed():
         for seed in ("1", "2", "3")
     }
     assert len(outputs) == 1 and "cors" in outputs.pop()
+
+
+# ── Tools ported from the mcp-tools-upgrade branch ─────────────────
+
+def list_tool_names():
+    handler = mcp_server.server.request_handlers[types.ListToolsRequest]
+    result = asyncio.run(handler(types.ListToolsRequest(method="tools/list"))).root
+    return [t.name for t in result.tools]
+
+
+def test_tool_lists_agree(mcp):
+    names = list_tool_names()
+    _, compact = call("list_tools_compact")
+    assert sorted(names) == sorted(line.split(" - ")[0] for line in compact["tools"])
+    _, guide = call("get_mcp_guide")
+    assert guide["welcome"].split(" - ")[1].startswith(f"{len(names)} tools")
+
+
+def test_disabled_tools_are_hidden_and_refused(mcp, monkeypatch):
+    monkeypatch.setenv("ENGRAM_MCP_DISABLED_TOOLS", "fetch_url, git_diff")
+    names = list_tool_names()
+    assert "fetch_url" not in names and "git_diff" not in names and "get_time" in names
+    is_error, body = call("fetch_url", {"url": "https://example.com"})
+    assert is_error and "switched off" in body
+
+
+def test_get_time_and_bad_timezone(mcp):
+    is_error, body = call("get_time", {"timezone": "UTC"})
+    assert not is_error and body["iso"].endswith("+00:00")
+    is_error, body = call("get_time", {"timezone": "Not/AZone"})
+    assert is_error and "Unknown timezone" in body
+    # get_time used to import datetime inside call_tool, which broke every other branch
+    _, created = call("create_session", {"task_description": "t", "task_goal": "g", "plan_steps": ["a"]})
+    is_error, _ = call("update_session", {"session_id": created["session_id"], "checkpoint": True})
+    assert not is_error
+
+
+def test_run_workflow_matches_the_single_tools(mcp):
+    call("store_solution", {"problem": "cors error on fetch", "solution": "add the header"})
+    _, direct = call("find_skill", {"query": "cors error"})
+    is_error, flow = call("run_workflow", {"workflow": "fix_error", "error_message": "cors error"})
+    assert not is_error and flow["skills"] == direct["skills"] and "workflow_next" in flow
+
+    call("create_playbook", {"name": "deploy", "description": "deploy the docker app", "steps": [{"step": 1, "action": "build"}]})
+    _, direct = call("get_smart_context", {"task_description": "deploy the docker app"})
+    _, flow = call("run_workflow", {"workflow": "start_task", "task_description": "deploy the docker app"})
+    assert flow["playbooks"] == direct["playbooks"] and flow["has_playbook"]
+
+    assert call("run_workflow", {"workflow": "fix_error"})[0]
+    assert call("run_workflow", {"workflow": "nope", "error_message": "x"})[0]
+    assert call("get_workflow_prompt", {"prompt": "nope"})[0]  # rejected by the schema enum
+
+
+def test_resources_list_and_read(mcp):
+    _, pb = call("create_playbook", {"name": "deploy", "description": "d", "steps": [{"step": 1, "action": "build"}]})
+    _, sk = call("create_skill", {"name": "Fix CORS", "description": "d", "triggers": ["cors"], "solution_text": "x"})
+    handler = mcp_server.server.request_handlers[types.ListResourcesRequest]
+    listed = asyncio.run(handler(types.ListResourcesRequest(method="resources/list"))).root
+    uris = {str(r.uri) for r in listed.resources}
+    assert {f"engram://playbook/{pb['playbook_id']}", f"engram://skill/{sk['skill_id']}"} <= uris
+
+    read = mcp_server.server.request_handlers[types.ReadResourceRequest]
+    request = types.ReadResourceRequest(method="resources/read",
+                                        params=types.ReadResourceRequestParams(uri=f"engram://skill/{sk['skill_id']}"))
+    content = asyncio.run(read(request)).root.contents[0]
+    assert content.mimeType == "application/json"
+    assert json.loads(content.text)["triggers"] == ["cors"]
+
+
+def test_fetch_url_blocks_private_targets(mcp):
+    is_error, body = call("fetch_url", {"url": "http://127.0.0.1:8000/api/settings"})
+    assert is_error
+
+
+def test_fetch_url_returns_text_for_html(mcp, monkeypatch):
+    from mcp_tools import web_fetch
+
+    async def fake(url, max_chars, timeout_sec):
+        return {"url": url, "final_url": url, "status": 200, "content_type": "text/html", "truncated": False,
+                "content": "<html><script>x()</script><p>Hello <b>world</b></p></html>", "note": "untrusted"}
+
+    monkeypatch.setattr(web_fetch, "fetch_url", fake)
+    _, body = call("fetch_url", {"url": "https://example.com"})
+    assert body["content"] == "Hello world" and body["note"] == "untrusted"
+
+
+@pytest.mark.skipif(not __import__("shutil").which("git"), reason="needs git")
+def test_git_tools_stay_inside_the_roots(mcp, monkeypatch, tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-q", str(repo)], check=True)
+    monkeypatch.setenv("ENGRAM_MCP_GIT_ROOTS", str(repo))
+    is_error, body = call("git_status", {"repo_path": str(repo)})
+    assert not is_error and body["clean"] is True
+    is_error, _ = call("git_status", {"repo_path": str(tmp_path)})
+    assert is_error
+
+
+def test_audit_log_is_opt_in_and_argument_free(mcp, monkeypatch, tmp_path):
+    import config
+    monkeypatch.setattr(config, "MCP_DATA_DIR", tmp_path / "audit")
+    call("store_memory", {"content": "hunter2 is the password"})
+    assert not (tmp_path / "audit" / "audit.log").exists()
+
+    monkeypatch.setenv("MCP_AUDIT_LOG", "1")
+    call("store_memory", {"content": "hunter2 is the password"})
+    call("record_skill_outcome", {"skill_id": "nope", "successful": True})
+    lines = [json.loads(l) for l in (tmp_path / "audit" / "audit.log").read_text().splitlines()]
+    assert [(l["tool"], l["outcome"]) for l in lines] == [("store_memory", "success"), ("record_skill_outcome", "failure")]
+    assert "hunter2" not in (tmp_path / "audit" / "audit.log").read_text()
+
+
+def test_empty_states_explain_what_to_do(mcp):
+    _, body = call("search_memories", {"query": "nothing"})
+    assert body["hint"]
+    is_error, body = call("find_skill", {"query": "  "})
+    assert is_error

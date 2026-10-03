@@ -1,0 +1,13 @@
+---
+description: How to create or edit Cursor rule files in .cursor/rules/. Apply when adding or modifying .mdc rule files.
+alwaysApply: false
+---
+
+# Rule authoring (this project)
+
+- **One concern per file** — Each rule covers one topic. Split by theme (e.g. frontend, backend, MCP, security).
+- **Frontmatter** — Use YAML: `description`, `globs` (YAML list with hyphens, not comma-separated), `alwaysApply`. Keep `description` specific so Agent Requested mode triggers correctly.
+- **Length** — Keep under 500 lines; under 50 for always-apply rules when possible.
+- **Examples** — Include concrete do/don’t or code snippets where they clarify.
+- **References** — Prefer “see @filename” or “follow pattern in path/to/file” over pasting long blocks into the rule.
+- **Critical behavior** — Must-happen workflow (e.g. use Engram at start/end) belongs in an always-apply rule; don’t rely on globs alone for it.

@@ -1,0 +1,14 @@
+---
+description: Python backend — async, error handling, models, testing
+globs:
+  - "backend/**/*.py"
+  - "mcp_server.py"
+alwaysApply: false
+---
+
+# Python Backend
+
+- App DB operations async (SQLite via aiosqlite); the MCP server's own stores (`mcp_knowledge_db.py`, `mcp_databases.py`) are sync sqlite3. Use `asyncio.gather()` for parallel work; no blocking I/O in async functions.
+- Wrap external calls (Neo4j, ChromaDB, Brave API) in try/except; log with context; degrade gracefully (WARNING, continue with available services).
+- Pydantic for models; camelCase for API/exposed fields, snake_case in Python; `populate_by_name = True` where needed.
+- Main app uses SQLite only. Verify optional services (Neo4j, ChromaDB) degrade gracefully. Use `python -c "..."` for quick DB checks.

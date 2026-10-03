@@ -46,21 +46,29 @@ backend/static/
 *.local
 
 # ===========================================
-# Environment & Secrets
+# Environment & Secrets (never commit)
 # ===========================================
 
-# Environment files (contain secrets)
+# Environment files (API keys, app passwords, DB URLs)
 .env
 .env.*
 backend/.env
 
-# Keep the example
-!.env.example
-!backend/.env.example
-
-# TLS keys/certificates (e.g. key.pem/cert.pem from the SSL steps in .env.example)
+# SSL / keys (e.g. key.pem/cert.pem from the SSL steps in .env.example)
 *.pem
 *.key
+!*.pem.example
+!*.key.example
+
+# Credential files
+credentials.json
+secrets.json
+**/secrets.yaml
+**/secrets.yml
+
+# Keep the example (no real secrets)
+!.env.example
+!backend/.env.example
 
 # ===========================================
 # IDE / Editor

@@ -36,6 +36,9 @@ def top_keywords(words: List[str], limit: int) -> List[str]:
 
 DB_PATH = MCP_KNOWLEDGE_DB
 
+# Most rows list_resources returns per kind (editors list resources often)
+RESOURCE_LIMIT = 500
+
 
 class MCPKnowledgeDB:
     """
@@ -833,6 +836,29 @@ class MCPKnowledgeDB:
                 pb['technologies'] = json.loads(pb['technologies'] or '[]')
                 pb['keywords'] = json.loads(pb['keywords'] or '[]')
                 return pb
+            return None
+    
+    def list_playbooks_for_resources(self, limit: int = RESOURCE_LIMIT) -> List[Dict]:
+        """List playbooks for MCP resources (id, name, description)."""
+        with self._get_conn() as conn:
+            rows = conn.execute("SELECT id, name, description FROM playbooks ORDER BY name LIMIT ?", (limit,)).fetchall()
+            return [{"id": r["id"], "name": r["name"] or r["id"], "description": (r["description"] or "")[:200]} for r in rows]
+    
+    def list_skills_for_resources(self, limit: int = RESOURCE_LIMIT) -> List[Dict]:
+        """List skills for MCP resources (id, name, description)."""
+        with self._get_conn() as conn:
+            rows = conn.execute("SELECT id, name, description FROM skills ORDER BY name LIMIT ?", (limit,)).fetchall()
+            return [{"id": r["id"], "name": r["name"] or r["id"], "description": (r["description"] or "")[:200]} for r in rows]
+    
+    def get_skill(self, skill_id: str) -> Optional[Dict]:
+        """Get a skill by ID."""
+        with self._get_conn() as conn:
+            row = conn.execute("SELECT * FROM skills WHERE id = ?", (skill_id,)).fetchone()
+            if row:
+                skill = dict(row)
+                skill['triggers'] = json.loads(skill['triggers'] or '[]')
+                skill['technologies'] = json.loads(skill['technologies'] or '[]')
+                return skill
             return None
     
     # ==================== UTILITIES ====================

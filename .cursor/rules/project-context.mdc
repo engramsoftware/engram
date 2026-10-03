@@ -1,0 +1,20 @@
+---
+description: Engram project architecture — stack, key dirs, MCP pointer
+alwaysApply: true
+---
+
+# Project: Engram
+
+Local-first AI chat with memory, knowledge graph, RAG, web search, addins.
+
+## Stack
+- **Backend:** Python 3.11, FastAPI, uvicorn. **DB:** SQLite only (`backend/sqlite_db.py`), single `data/app.db`. **Vector:** ChromaDB (`data/chroma/`). **Graph:** Neo4j optional.
+- **Frontend:** React 18, TypeScript, Vite, Tailwind, Zustand.
+- **Startup:** Production = `docker compose up` (8000). Local = venv + `backend/.env` + uvicorn.
+
+## Key dirs
+- `backend/` — routers, pipeline, llm, memory, addins, skills, config, database
+- `frontend/src/` — components, stores, services, types, pages
+- `data/` — all user data (app.db, chroma, mcp, learning, uploads). Paths from `backend/config.py`.
+
+For DB access and config wiring see **@project-wiring**. For MCP workflow see **@engram-mcp-usage**.

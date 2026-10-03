@@ -158,7 +158,7 @@ Docker pulls **Python 3.11 slim** and installs the backend with all its dependen
 
 | Package | What It Is | Why Engram Needs It |
 |---------|-----------|-------------------|
-| **mcp** | Model Context Protocol SDK | Runs the MCP server with 37 tools that integrates with Windsurf and other MCP-compatible editors — gives your code editor access to Engram's knowledge base, conversation history, and skill playbooks |
+| **mcp** | Model Context Protocol SDK | Runs the MCP server (44 tools) for Cursor, Windsurf and other MCP-compatible editors — gives your code editor Engram's MCP knowledge base (skills, solutions, playbooks, sessions) plus web fetch, time and read-only git tools |
 
 ### Pre-Downloaded ML Models
 
@@ -330,7 +330,20 @@ Context is injected into the system prompt with a 6000-token budget. Priority or
 | **Search** | Brave Search API |
 | **Entity Extraction** | GLiNER + spaCy for query-time, LLM-based for outlet |
 | **Auth** | JWT with bcrypt password hashing |
-| **MCP Server** | 37 tools across 3 SQLite databases |
+| **MCP Server** | 44 tools across 3 SQLite databases (see [MCP server](#mcp-server-for-editors)) |
+
+### MCP Server for Editors
+
+Point your editor at `mcp_config.example.json` (Cursor: `.cursor/mcp.json`). It runs `docker exec -i -u engram engram python mcp_server.py`, so the server uses the container's unprivileged user.
+
+| Setting | Default | What it does |
+|---------|---------|--------------|
+| `ENGRAM_MCP_DISABLED_TOOLS` | (none) | Comma-separated tools to switch off, e.g. `fetch_url,git_diff` |
+| `ENGRAM_MCP_FETCH_ALLOW_PRIVATE` | off | `fetch_url` only reaches public addresses (every redirect is re-checked), so it can't read the Engram API, your LAN or cloud metadata. Set `1` to allow private ones. |
+| `ENGRAM_MCP_GIT_ROOTS` | working directory | Folders the read-only `git_*` tools may look into (`:`-separated; `;` on Windows). Repo config that could run commands (fsmonitor, external diff) is ignored. |
+| `MCP_AUDIT_LOG` | off | `1` writes tool name, outcome and duration (never arguments) to `data/mcp/audit.log` |
+
+The `git_*` tools need git and your repositories, which the Docker image doesn't have; they work when `mcp_server.py` runs on the host. Tool failures come back to the editor as errors.
 
 ### Two API Entry Points
 

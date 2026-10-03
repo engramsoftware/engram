@@ -10,7 +10,7 @@ import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { User, Bot, Copy, Check, ChevronDown, Brain, Globe, BookOpen, Network, Search, AlertTriangle, Eye } from 'lucide-react'
+import { Copy, Check, ChevronDown, Brain, Globe, BookOpen, Network, Search, AlertTriangle, Eye } from 'lucide-react'
 import type { Message } from '../../types/chat.types'
 import WebSourceCards from './WebSourceCards'
 import NotificationCards from './NotificationCards'
@@ -53,34 +53,15 @@ export default function MessageBubble({ message, isThinking = false }: Props) {
 
   const hasImages = isUser && message.images && message.images.length > 0
   return (
-    <div className={`group py-3 sm:py-5 ${isUser ? '' : 'bg-dark-bg-secondary/30'}`}>
-      <div className="max-w-3xl mx-auto px-3 sm:px-4 flex gap-2.5 sm:gap-4">
-        {/* Avatar — hidden on mobile for tighter layout */}
+    <div className="group py-2 sm:py-3">
+      <div className={`max-w-3xl mx-auto px-3 sm:px-4 flex ${isUser ? 'justify-end' : ''}`}>
+        {/* You: a bubble on the right. Engram: plain text across the column, no avatar. */}
         <div
-          className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center
-                      flex-shrink-0 mt-0.5
-                      ${isUser
-                        ? 'bg-dark-accent-primary'
-                        : 'bg-gradient-to-br from-indigo-500 to-purple-600'
-                      }`}
+          title={isUser ? timeStr : undefined}
+          className={isUser
+            ? 'max-w-[85%] min-w-0 rounded-2xl bg-dark-bg-secondary px-4 py-2.5'
+            : 'w-full min-w-0'}
         >
-          {isUser ? (
-            <User size={14} className="text-white sm:w-4 sm:h-4" />
-          ) : (
-            <Bot size={14} className="text-white sm:w-4 sm:h-4" />
-          )}
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          {/* Header */}
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs sm:text-sm font-semibold text-dark-text-primary">
-              {isUser ? 'You' : 'Engram'}
-            </span>
-            <span className="text-[10px] sm:text-xs text-dark-text-secondary">{timeStr}</span>
-          </div>
-
           {/* Attached images */}
           {hasImages && (
             <div className="flex gap-2 mb-2 flex-wrap">
@@ -117,13 +98,13 @@ export default function MessageBubble({ message, isThinking = false }: Props) {
 
           {/* Body */}
           {showThinking ? (
-            <div className="flex items-center gap-2 py-2">
-              <div className="flex gap-1">
-                <span className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce [animation-delay:0ms]" />
-                <span className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce [animation-delay:150ms]" />
-                <span className="w-2 h-2 bg-indigo-400 rounded-full animate-bounce [animation-delay:300ms]" />
+            <div className="flex items-center gap-2.5 py-2" role="status" aria-label="Thinking">
+              <div className="flex gap-1" aria-hidden>
+                <span className="typing-dot" />
+                <span className="typing-dot" />
+                <span className="typing-dot" />
               </div>
-              <span className="text-sm text-dark-text-secondary">Thinking...</span>
+              <span className="text-sm text-dark-text-secondary">Thinking</span>
             </div>
           ) : (
             <div className="md-content">
@@ -180,7 +161,7 @@ export default function MessageBubble({ message, isThinking = false }: Props) {
                     return (
                       <div className="relative group/code rounded-lg overflow-hidden border border-dark-border my-3">
                         {/* Language label + copy button */}
-                        <div className="flex items-center justify-between px-4 py-1.5 bg-[#1e1e2e] border-b border-white/10">
+                        <div className="flex items-center justify-between px-4 py-1.5 bg-[#18181b] border-b border-white/10">
                           <span className="text-xs text-gray-400 font-mono">
                             {match[1]}
                           </span>
@@ -227,7 +208,7 @@ export default function MessageBubble({ message, isThinking = false }: Props) {
                           customStyle={{
                             margin: 0,
                             borderRadius: 0,
-                            background: '#1e1e2e',
+                            background: '#18181b',
                             fontSize: '0.85rem',
                           }}
                         >
@@ -259,6 +240,7 @@ export default function MessageBubble({ message, isThinking = false }: Props) {
                 )}
                 <span>{copied ? 'Copied' : 'Copy'}</span>
               </button>
+              <span className="px-1 text-[11px] text-dark-text-secondary">{timeStr}</span>
             </div>
           )}
 

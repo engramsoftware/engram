@@ -259,7 +259,7 @@ export default function SkillVoyagerPanel() {
           </div>
           <div className="h-2 bg-dark-bg-primary rounded-full overflow-hidden">
             <div
-              className="h-full bg-gradient-to-r from-purple-500 to-blue-400 rounded-full transition-all duration-500"
+              className="h-full bg-dark-accent-primary rounded-full transition-all duration-500"
               style={{ width: `${Math.min(stats.avg_confidence * 100, 100)}%` }}
             />
           </div>

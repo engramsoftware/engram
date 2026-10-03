@@ -157,6 +157,11 @@ class Settings(BaseSettings):
     # 100.64/10 for Tailscale) are always allowed.
     allowed_networks: str = ""
 
+    # Reverse proxies whose X-Forwarded-For header is believed (IPs or CIDRs,
+    # comma-separated, e.g. "172.18.0.5" for an nginx container). Empty: the
+    # header is ignored, so nobody can fake a LAN address with it.
+    trusted_proxies: str = ""
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

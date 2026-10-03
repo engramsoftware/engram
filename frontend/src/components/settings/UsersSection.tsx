@@ -1,8 +1,8 @@
 /**
- * Settings > Users: everyone who can sign in to this Engram.
- * Anyone signed in can add, edit and delete other accounts (there are no
- * admin roles yet), so the copy says so and risky changes ask first.
- * Your own profile is edited in Settings > Account.
+ * Settings > Users (admins only): everyone who can sign in to this Engram.
+ * Admins add, edit and delete accounts and grant admin rights; the server
+ * keeps at least one admin. Risky changes ask first. Your own profile is
+ * edited in Settings > Account.
  */
 
 import { useEffect, useState } from 'react'
@@ -20,9 +20,24 @@ interface UserRow {
   email: string
   name: string
   created_at: string
+  is_admin?: boolean
 }
 
 const MIN_PASSWORD = 8
+const ADMIN_HINT = 'Admins add and manage accounts and can see server logs.'
+
+function AdminCheckbox({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  return (
+    <label className="flex items-start gap-2 text-sm text-dark-text-primary cursor-pointer">
+      <input type="checkbox" checked={checked} onChange={e => onChange(e.target.checked)} disabled={disabled}
+             className="mt-0.5 w-4 h-4 accent-dark-accent-primary" />
+      <span>
+        Admin
+        <span className="block text-xs text-dark-text-secondary">{ADMIN_HINT}</span>
+      </span>
+    </label>
+  )
+}
 
 export default function UsersSection({ active, onCount }: { active: boolean; onCount?: (n: number) => void }) {
   const currentUser = useAuthStore(s => s.user)
@@ -89,7 +104,7 @@ export default function UsersSection({ active, onCount }: { active: boolean; onC
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-dark-text-primary truncate flex items-center gap-2">
-                        {u.name} {isMe && <Badge tone="blue">You</Badge>}
+                        {u.name} {isMe && <Badge tone="blue">You</Badge>} {u.is_admin && <Badge>Admin</Badge>}
                       </p>
                       <p className="text-xs text-dark-text-secondary truncate">{u.email}</p>
                     </div>
@@ -123,12 +138,13 @@ function NewUserForm({ onDone }: { onDone: (added: boolean) => void }) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [isAdmin, setIsAdmin] = useState(false)
   const [state, run] = useAction()
-  useDirty(name !== '' || email !== '' || password !== '')
+  useDirty(name !== '' || email !== '' || password !== '' || isAdmin)
 
   const valid = name.trim() !== '' && email.trim() !== '' && password.length >= MIN_PASSWORD
   const create = () => run(async () => {
-    await usersApi.create({ name: name.trim(), email: email.trim(), password })
+    await usersApi.create({ name: name.trim(), email: email.trim(), password, is_admin: isAdmin })
     onDone(true)
   }, 'User added', "Couldn't add the user")
 
@@ -139,7 +155,8 @@ function NewUserForm({ onDone }: { onDone: (added: boolean) => void }) {
         <TextField label="Name" value={name} onChange={setName} />
         <TextField label="Email" type="email" value={email} onChange={setEmail} />
       </div>
-      <PasswordField label="Password" value={password} onChange={setPassword} hint={`At least ${MIN_PASSWORD} characters.`} />
+      <PasswordField label="Password" value={password} onChange={setPassword} hint={`At least ${MIN_PASSWORD} characters. Give it to them; they can change it in Settings › Account.`} />
+      <AdminCheckbox checked={isAdmin} onChange={setIsAdmin} />
       <ActionRow>
         <ActionButton onClick={() => onDone(false)}>Cancel</ActionButton>
         <ActionButton variant="primary" onClick={create} busy={state.status === 'busy'} disabled={!valid}>Add user</ActionButton>
@@ -153,16 +170,18 @@ function EditUserForm({ user, onDone }: { user: UserRow; onDone: (saved: boolean
   const [name, setName] = useState(user.name)
   const [email, setEmail] = useState(user.email)
   const [password, setPassword] = useState('')
+  const [isAdmin, setIsAdmin] = useState(!!user.is_admin)
   const [state, run] = useAction()
-  const dirty = name !== user.name || email !== user.email || password !== ''
+  const dirty = name !== user.name || email !== user.email || password !== '' || isAdmin !== !!user.is_admin
   useDirty(dirty)
 
   const tooShort = password.length > 0 && password.length < MIN_PASSWORD
   const save = () => run(async () => {
-    const payload: { name?: string; email?: string; password?: string } = {}
+    const payload: { name?: string; email?: string; password?: string; is_admin?: boolean } = {}
     if (name.trim() && name !== user.name) payload.name = name.trim()
     if (email.trim() && email !== user.email) payload.email = email.trim()
     if (password) payload.password = password
+    if (isAdmin !== !!user.is_admin) payload.is_admin = isAdmin
     await usersApi.update(user.id, payload)
     onDone(true)
   })
@@ -180,14 +199,15 @@ function EditUserForm({ user, onDone }: { user: UserRow; onDone: (saved: boolean
         placeholder="Leave empty to keep their password"
         hint={tooShort ? `At least ${MIN_PASSWORD} characters.` : undefined}
       />
+      <AdminCheckbox checked={isAdmin} onChange={setIsAdmin} />
       <ActionRow>
         <ActionButton onClick={() => onDone(false)}>Cancel</ActionButton>
-        {/* Changing someone else's password locks them out until they get the new one, so it asks first */}
+        {/* Changing someone else's password signs them out everywhere, so it asks first */}
         <ConfirmButton
           label="Save"
           variant="primary"
           needsConfirm={password !== ''}
-          prompt={`Change ${user.name}'s password? They'll need the new one to sign in.`}
+          prompt={`Change ${user.name}'s password? They'll be signed out everywhere and need the new one to sign in.`}
           confirmLabel="Change password"
           busy={state.status === 'busy'}
           disabled={!dirty || tooShort}

@@ -221,6 +221,12 @@ async def addin_action(
         if not addin.enabled:
             raise HTTPException(status_code=400, detail=f"Add-in is disabled: {addin_name}")
 
+        if request.action in getattr(addin, "admin_actions", ()) and not current_user.get("is_admin"):
+            raise HTTPException(
+                status_code=403,
+                detail=f"Only an admin can do this: {addin.name} is shared by everyone on this Engram",
+            )
+
         # Call the addin's handle_action if it has one
         if hasattr(addin, 'handle_action'):
             result = await addin.handle_action(request.action, request.payload)
@@ -260,10 +266,12 @@ async def get_addin_settings_schema(
         if not addin:
             return {"sections": []}
 
-        if hasattr(addin, 'get_settings_schema'):
-            return addin.get_settings_schema()
-
-        return {"addin_id": addin_name, "addin_name": addin.name, "sections": []}
+        schema = addin.get_settings_schema() if hasattr(addin, 'get_settings_schema') else {
+            "addin_id": addin_name, "addin_name": addin.name, "sections": []}
+        # Settings saved through an admin-only action are read-only for everyone else
+        schema["read_only"] = ("update_settings" in getattr(addin, "admin_actions", ())
+                               and not current_user.get("is_admin"))
+        return schema
 
     except Exception as e:
         logger.error(f"Failed to get settings schema for {addin_name}: {e}")

@@ -15,9 +15,11 @@ services:
       - ./data:/data
       # ML model cache: persists ChromaDB ONNX + cross-encoder models across restarts
       # Prevents 60-80s cold-start on first message after rebuild
-      - model-cache:/root/.cache
+      # (Engram runs as the unprivileged "engram" user, whose home is /home/engram)
+      - model-cache:/home/engram/.cache
       # Optional: mount a local .env file for configuration
-      # Uncomment and create backend/.env with your settings
+      # Uncomment and create backend/.env with your settings (make it readable by
+      # uid 10001). Otherwise generated secrets are kept in data/secrets.env.
       # - ./backend/.env:/app/.env:ro
     environment:
       # Generate unique secrets on first run (override in .env or here)

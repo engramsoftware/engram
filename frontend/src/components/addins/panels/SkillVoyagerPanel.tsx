@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 import { addinsApi } from '../../../services/api'
 import { useUIStore } from '../../../stores/uiStore'
+import { useAuthStore } from '../../../stores/authStore'
 
 /** Skill data from the backend. */
 interface Skill {
@@ -96,6 +97,7 @@ export default function SkillVoyagerPanel() {
   const [expandedSkill, setExpandedSkill] = useState<string | null>(null)
   const [curriculumResults, setCurriculumResults] = useState<any[] | null>(null)
   const [runningCurriculum, setRunningCurriculum] = useState(false)
+  const isAdmin = useAuthStore(s => !!s.user?.is_admin)
 
   const fetchDashboard = useCallback(async () => {
     try {
@@ -195,16 +197,25 @@ export default function SkillVoyagerPanel() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button
-              onClick={handleToggleAutoLearn}
-              className={`text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${
-                data.auto_learn
-                  ? 'text-green-400 bg-green-400/10 hover:bg-green-400/20'
-                  : 'text-dark-text-secondary bg-dark-bg-primary hover:bg-dark-bg-secondary'
-              }`}
-            >
-              {data.auto_learn ? 'Learning ON' : 'Learning OFF'}
-            </button>
+            {/* Skills are shared by everyone, so only admins change them */}
+            {isAdmin ? (
+              <button
+                onClick={handleToggleAutoLearn}
+                className={`text-[10px] px-2 py-1 rounded-full font-medium transition-colors ${
+                  data.auto_learn
+                    ? 'text-green-400 bg-green-400/10 hover:bg-green-400/20'
+                    : 'text-dark-text-secondary bg-dark-bg-primary hover:bg-dark-bg-secondary'
+                }`}
+              >
+                {data.auto_learn ? 'Learning ON' : 'Learning OFF'}
+              </button>
+            ) : (
+              <span className={`text-[10px] px-2 py-1 rounded-full font-medium ${
+                data.auto_learn ? 'text-green-400 bg-green-400/10' : 'text-dark-text-secondary bg-dark-bg-primary'
+              }`}>
+                {data.auto_learn ? 'Learning ON' : 'Learning OFF'}
+              </span>
+            )}
             <button
               onClick={() => useUIStore.getState().openSettings('addins')}
               className="text-[10px] px-2 py-1 rounded-full text-dark-text-secondary hover:text-dark-text-primary hover:bg-dark-bg-secondary transition-colors"
@@ -295,7 +306,7 @@ export default function SkillVoyagerPanel() {
             skills={skills}
             expandedSkill={expandedSkill}
             onToggleExpand={id => setExpandedSkill(expandedSkill === id ? null : id)}
-            onDelete={handleDeleteSkill}
+            onDelete={isAdmin ? handleDeleteSkill : undefined}
           />
         )}
 
@@ -307,7 +318,7 @@ export default function SkillVoyagerPanel() {
           <CurriculumSection
             results={curriculumResults}
             running={runningCurriculum}
-            onRun={handleRunCurriculum}
+            onRun={isAdmin ? handleRunCurriculum : undefined}
           />
         )}
       </div>
@@ -408,7 +419,8 @@ function SkillsSection({ skills, expandedSkill, onToggleExpand, onDelete }: {
   skills: Skill[]
   expandedSkill: string | null
   onToggleExpand: (id: string) => void
-  onDelete: (id: string) => void
+  /** Missing for non-admins: skills are shared by everyone */
+  onDelete?: (id: string) => void
 }) {
   const [filter, setFilter] = useState<string>('all')
 
@@ -508,14 +520,16 @@ function SkillsSection({ skills, expandedSkill, onToggleExpand, onDelete }: {
                       )}
                     </div>
                   )}
-                  <div className="flex justify-end">
-                    <button
-                      onClick={(e) => { e.stopPropagation(); onDelete(skill.id) }}
-                      className="text-[10px] text-red-400/60 hover:text-red-400 flex items-center gap-1 transition-colors"
-                    >
-                      <Trash2 size={10} /> Delete
-                    </button>
-                  </div>
+                  {onDelete && (
+                    <div className="flex justify-end">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onDelete(skill.id) }}
+                        className="text-[10px] text-red-400/60 hover:text-red-400 flex items-center gap-1 transition-colors"
+                      >
+                        <Trash2 size={10} /> Delete
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -577,7 +591,7 @@ function EvalsSection({ evaluations }: { evaluations: Evaluation[] }) {
 
 /** Curriculum engine controls and results. */
 function CurriculumSection({ results, running, onRun }: {
-  results: any[] | null; running: boolean; onRun: () => void
+  results: any[] | null; running: boolean; onRun?: () => void
 }) {
   return (
     <div>
@@ -588,7 +602,7 @@ function CurriculumSection({ results, running, onRun }: {
             Analyzes gaps in your skill library and proposes new skills to learn
           </p>
         </div>
-        <button
+        {onRun ? <button
           onClick={onRun}
           disabled={running}
           className="flex items-center gap-1.5 text-[11px] bg-purple-500/20 text-purple-400
@@ -597,7 +611,7 @@ function CurriculumSection({ results, running, onRun }: {
         >
           {running ? <Loader2 size={12} className="animate-spin" /> : <Play size={12} />}
           {running ? 'Analyzing...' : 'Run Curriculum'}
-        </button>
+        </button> : <span className="text-[10px] text-dark-text-secondary">Only an admin can run it</span>}
       </div>
 
       {results === null ? (

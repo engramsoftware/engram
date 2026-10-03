@@ -193,6 +193,11 @@ export default function ChatInterface() {
                 fullContent += parsed.content
                 updateLastMessage(stripHiddenMarkers(fullContent))
               }
+              // The server withheld this reply after streaming it (protected data)
+              if (parsed.replace) {
+                fullContent = parsed.replace
+                updateLastMessage(fullContent)
+              }
               if (parsed.error) {
                 updateLastMessage(`Error: ${parsed.error}`)
                 return

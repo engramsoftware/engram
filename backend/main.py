@@ -36,7 +36,7 @@ from middleware.private_network import PrivateNetworkMiddleware
 from middleware.rate_limit import RateLimitMiddleware
 
 # Import routers
-from routers import auth, conversations, messages, search, addins, personas, memories, notes, documents, uploads, openai_compat, users, notifications, graph, setup, data_transfer, budget, email_reader, schedule
+from routers import auth, conversations, messages, search, addins, personas, memories, notes, documents, uploads, openai_compat, users, notifications, graph, setup, data_transfer, budget, email_reader, schedule, api_tokens
 from routers import settings as settings_router
 
 # ============================================================
@@ -71,22 +71,50 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("Starting up chat application...")
 
-    # Warn if JWT secret is still the default — critical security issue
+    # A published default JWT secret would let anyone forge a login (as an admin,
+    # too). Use a random one kept in the data folder instead; the only cost of a
+    # new one is signing everyone in again.
     _settings = get_settings()
     if _settings.jwt_secret_key in (
         "your-super-secret-key-change-in-production",
         "change-me-to-a-random-secret-key",
+        "change-me",
     ):
+        import secrets as _secrets
+        from config import DATA_DIR
+        _secret_file = DATA_DIR / ".jwt_secret"
+        try:
+            if not _secret_file.exists():
+                _secret_file.parent.mkdir(parents=True, exist_ok=True)
+                _secret_file.write_text(_secrets.token_hex(32))
+                _secret_file.chmod(0o600)
+            _settings.jwt_secret_key = _secret_file.read_text().strip()
+            logger.warning(f"JWT_SECRET_KEY isn't set; using a generated secret stored in {_secret_file}")
+        except OSError as e:
+            _settings.jwt_secret_key = _secrets.token_hex(32)
+            logger.warning(f"JWT_SECRET_KEY isn't set and {_secret_file} can't be saved ({e}); "
+                           "using a temporary secret, so everyone signs in again after a restart")
+
+    # The encryption key protects stored API keys; it can't be replaced
+    # automatically without making the saved keys unreadable, so only warn
+    if _settings.encryption_key in ("your-32-byte-encryption-key-here", "change-me-to-a-random-32-char-key"):
         logger.warning(
-            "⚠️  JWT_SECRET_KEY is still the default! "
-            "Generate a real secret: python -c \"import secrets; print(secrets.token_hex(32))\" "
-            "and set it in .env"
+            "⚠️  ENCRYPTION_KEY is still the default, so saved API keys are encrypted with a publicly "
+            "known key. Set ENCRYPTION_KEY in .env (you'll need to re-enter saved API keys once)."
         )
 
     # Log detected CORS origins so the user can verify LAN access
     logger.info(f"CORS origins: {_settings.cors_origins_list}")
 
     await connect_to_mongodb()
+
+    # Roles: an install from before roles existed gets its first account as admin
+    try:
+        from database import get_database as _get_db
+        from routers.auth import ensure_admin_exists
+        await ensure_admin_exists(_get_db())
+    except Exception as e:
+        logger.warning(f"Admin check skipped: {e}")
 
     # Seed built-in personas (tutor, meal planner, budget assistant)
     try:
@@ -171,6 +199,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response.headers["X-Frame-Options"] = "DENY"
         response.headers["X-XSS-Protection"] = "1; mode=block"
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        # Baseline CSP. Scripts aren't restricted: the artifact preview is a srcdoc
+        # iframe, which inherits this policy, and runs model-written and CDN scripts
+        # (it is isolated by its sandbox instead). Uploads set their own policy.
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+        )
         # Cache static assets (JS/CSS) but not API responses
         if request.url.path.startswith("/assets/"):
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
@@ -218,6 +253,7 @@ app.include_router(notes.router, prefix="/api/notes", tags=["Notes"])
 app.include_router(documents.router, prefix="/api/documents", tags=["Documents"])
 app.include_router(uploads.router, prefix="/api/uploads", tags=["Uploads"])
 app.include_router(users.router, prefix="/api/users", tags=["Users"])
+app.include_router(api_tokens.router, prefix="/api/tokens", tags=["API tokens"])
 app.include_router(notifications.router, prefix="/api", tags=["Notifications"])
 app.include_router(openai_compat.router, prefix="/api", tags=["OpenAI Compatible"])
 app.include_router(graph.router, prefix="/api/graph", tags=["Knowledge Graph"])

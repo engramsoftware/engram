@@ -66,7 +66,7 @@ docker compose logs -f   # view logs
 
 ```bash
 docker compose down -v   # remove the container and the model cache volume
-sudo rm -rf ./data       # delete all data: users, chats, settings, secrets (files are root-owned on Linux)
+sudo rm -rf ./data       # delete all data: users, chats, settings, secrets (owned by the container's user on Linux)
 ```
 
 Skip the `rm` to keep your data: it lives in the `./data` folder next to `docker-compose.yml`.
@@ -276,9 +276,12 @@ Extensible plugin architecture with built-in plugins:
 
 - **Most data stays on your machine.** SQLite and ChromaDB store everything locally. The exception is the **optional** Neo4j Aura knowledge graph, which is a cloud service — if you enable it, entity and relationship data is stored on Neo4j's servers.
 - **Private network only.** Blocks all public IP access by default (LAN and VPN only).
+- **Accounts and admins.** The first account you create is the admin. There is no open sign-up: admins add people in Settings › Users. Only admins manage accounts. Changing a password signs out that account's other sessions, and Settings › Account has "Sign out everywhere".
+- **Forgotten password.** An admin sets a new one in Settings › Users. If you're the only admin, run `docker exec -it engram python reset_password.py you@example.com` (add `--make-admin` to restore admin rights).
 - **API keys encrypted at rest** using Fernet symmetric encryption (AES-128-CBC).
 - **Rate limiting** on authentication endpoints to prevent brute force attacks.
-- **Security headers** (HSTS, X-Frame-Options, CSP) on all responses.
+- **Security headers** on all responses: X-Frame-Options, nosniff, Referrer-Policy and a baseline CSP (no plugins, no framing, no form posts elsewhere).
+- **Isolated previews and uploads.** HTML/SVG previews of model output run in a sandboxed iframe with its own origin, so they can't read your login. Uploaded files other than images and PDFs download instead of opening, and are served with a CSP sandbox.
 - **Input validation** on all user-facing endpoints.
 
 ---
@@ -332,7 +335,7 @@ Context is injected into the system prompt with a 6000-token budget. Priority or
 ### Two API Entry Points
 
 1. **`POST /messages`** - Main chat UI endpoint with streaming
-2. **`POST /v1/chat/completions`** - OpenAI-compatible API for code agents and external tools
+2. **`POST /api/v1/chat/completions`** - OpenAI-compatible API for code agents and external tools. It needs a personal API token: create one in Settings › Account › API tokens and use it as the agent's API key (`Authorization: Bearer engram_...`). Requests run as that account.
 
 Both run the same retrieval and outlet pipeline.
 
@@ -342,11 +345,17 @@ Both run the same retrieval and outlet pipeline.
 
 On first start, Engram auto-generates secure JWT and encryption keys. No manual setup needed.
 
+In Docker they are saved in `data/secrets.env` (see [Data and Privacy](#data-and-privacy)), so rebuilding or updating the container keeps everyone signed in and saved API keys readable. Updating from an image that kept them inside the container? Save them first; the command is under Data and Privacy. Without Docker, if `JWT_SECRET_KEY` isn't set, Engram generates one and keeps it in `data/.jwt_secret`.
+
+The container runs Engram as an unprivileged user (uid 10001). If your `data` folder is on a mount that ignores file ownership (some Windows/macOS setups), it falls back to root and logs a warning; a Docker volume avoids that. Run other commands in the container as the same user (`docker exec -u engram …`, as in `mcp_config.example.json`) so files they create stay writable by Engram; `reset_password.py` does this by itself.
+
 LLM provider API keys are configured through the **Settings** tab in the app. They are stored encrypted in the database, not in plain text.
 
 ### Environment Variables
 
 You can set environment variables in `docker-compose.yml` or mount a `.env` file read-only (`./backend/.env:/app/.env:ro`). See `backend/.env.example` for all options.
+
+**Behind a reverse proxy?** Set `TRUSTED_PROXIES` to the proxy's IP (or CIDR) so Engram uses the client address from `X-Forwarded-For`. Without it the header is ignored, so nobody can fake a LAN address. On Docker Desktop (Windows/macOS), every connection can appear to come from Docker's own network, so the LAN-only check can't tell local and remote visitors apart there. Don't expose the port to the internet.
 
 ### Local LLM Providers (LM Studio, Ollama, llama.cpp)
 
@@ -412,7 +421,7 @@ All user data lives in the `./data` folder, mounted at `/data` inside the contai
 docker exec engram sh -c "umask 077; grep -E '^(JWT_SECRET_KEY|ENCRYPTION_KEY)=' /app/.env | grep -v '=change-me' > /data/secrets.env"
 ```
 
-If you set `JWT_SECRET_KEY` / `ENCRYPTION_KEY` as environment variables, nothing changes: keep them set.
+If you set `JWT_SECRET_KEY` / `ENCRYPTION_KEY` as environment variables, nothing changes: keep them set. If you ran a pre-release build that kept them in `data/.engram.env`, there's nothing to do either: Engram reads them (and the other settings in that file) on start and saves the secrets to `data/secrets.env`.
 
 **To back up data:** `docker cp engram:/data ./backup`
 

@@ -54,6 +54,8 @@ interface SettingsSchema {
   addin_id: string
   addin_name: string
   sections: SettingsSection[]
+  /** Settings shared by everyone: only admins can change them */
+  read_only?: boolean
 }
 
 type Values = Record<string, unknown>
@@ -118,6 +120,9 @@ export default function AddinSettingsRenderer({ addinName, disabled = false }: P
     )
   }
   if (!schema) return <p className="text-xs text-dark-text-secondary">This add-in has no settings.</p>
+  if (schema.read_only) {
+    return <p className="text-xs text-dark-text-secondary">These settings apply to everyone on this Engram, so only an admin can change them.</p>
+  }
 
   const applySaved = (patch: Values) => setSaved(prev => ({ ...prev, ...patch }))
 

@@ -85,11 +85,8 @@ export default function LoginPage() {
         </form>
         
         <div className="mt-6 text-center space-y-2">
-          <p className="text-dark-text-secondary">
-            Don't have an account?{' '}
-            <Link to="/register" className="text-dark-accent-primary hover:underline">
-              Sign up
-            </Link>
+          <p className="text-sm text-dark-text-secondary">
+            Need an account? Ask an admin of this Engram to add you.
           </p>
           <p>
             <Link to="/forgot-password" className="text-sm text-dark-text-secondary hover:text-dark-accent-primary transition-colors">

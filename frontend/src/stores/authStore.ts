@@ -14,6 +14,8 @@ interface AuthState {
   
   // Actions
   login: (token: string, user: User) => void
+  /** Replace the session token (after a password change ends other sessions) */
+  setToken: (token: string) => void
   logout: () => void
   updateUser: (user: Partial<User>) => void
 }
@@ -30,6 +32,8 @@ export const useAuthStore = create<AuthState>()(
         user,
         isAuthenticated: true,
       }),
+
+      setToken: (token) => set({ token }),
 
       logout: () => set({
         token: null,

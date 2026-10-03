@@ -54,9 +54,22 @@ class UserResponse(BaseModel):
     name: str
     created_at: datetime
     preferences: UserPreferences
-    
+    is_admin: bool = False
+
     class Config:
         from_attributes = True
+
+
+def user_response(doc: Dict[str, Any]) -> "UserResponse":
+    """Build the API view of a stored user document."""
+    return UserResponse(
+        id=str(doc["_id"]),
+        email=doc["email"],
+        name=doc["name"],
+        created_at=doc["createdAt"],
+        preferences=doc.get("preferences", {"theme": "dark"}),
+        is_admin=bool(doc.get("isAdmin")),
+    )
 
 
 class TokenResponse(BaseModel):

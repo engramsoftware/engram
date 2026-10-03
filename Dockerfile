@@ -23,6 +23,14 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# Engram runs as this unprivileged user. The entrypoint starts as root only to
+# hand /data and the model cache to it, then drops privileges (setpriv).
+RUN groupadd --gid 10001 engram \
+    && useradd --no-log-init --uid 10001 --gid engram --home-dir /home/engram --create-home \
+       --shell /usr/sbin/nologin engram
+# Model caches (ChromaDB ONNX, Hugging Face) live under the engram user's home
+ENV HOME=/home/engram
+
 # Install Python dependencies first (cached layer)
 COPY backend/requirements.txt ./requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
@@ -36,7 +44,8 @@ print('ChromaDB ONNX model cached')"
 RUN python -c "\
 from sentence_transformers import CrossEncoder; \
 m = CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2'); \
-print('Cross-encoder model cached')"
+print('Cross-encoder model cached')" \
+    && chown -R engram:engram /home/engram
 
 # Copy backend source
 COPY backend/ ./

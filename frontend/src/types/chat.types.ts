@@ -6,6 +6,8 @@ export interface User {
   id: string
   email: string
   name: string
+  /** Admins manage other accounts and server logs */
+  is_admin?: boolean
   createdAt: string
   preferences: {
     theme: string

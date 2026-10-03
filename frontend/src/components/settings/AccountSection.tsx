@@ -1,35 +1,41 @@
 /**
  * Settings > Account: your own profile, password, appearance and sign-out.
  * Profile and password changes go through /users/me and keep the signed-in
- * user (shown in the sidebar) in sync.
+ * user (shown in the sidebar) in sync. Changing the password needs the
+ * current one and signs out your other sessions; "Sign out everywhere" ends
+ * all of them, including this one.
  */
 
 import { useEffect, useState } from 'react'
 import { Keyboard, LogOut, Moon, Sun } from 'lucide-react'
-import { usersApi } from '../../services/api'
+import { authApi, usersApi } from '../../services/api'
 import { useAuthStore } from '../../stores/authStore'
 import { useUIStore } from '../../stores/uiStore'
 import {
-  ActionButton, ActionRow, ActionStatus, PasswordField, TextField, UnsavedPill, useAction, useDirty,
+  ActionButton, ActionRow, ActionStatus, ConfirmButton, ErrorStatus, PasswordField, TextField, UnsavedPill,
+  useAction, useDirty,
 } from './primitives'
+import ApiTokensCard from './ApiTokensCard'
 
 const MIN_PASSWORD = 8
 
 export default function AccountSection() {
-  const { user, updateUser, logout } = useAuthStore()
+  const { user, updateUser, setToken, logout } = useAuthStore()
   const { theme, setTheme, setShowShortcuts, requestLeave } = useUIStore()
 
   const [name, setName] = useState(user?.name ?? '')
   const [email, setEmail] = useState(user?.email ?? '')
+  const [currentPassword, setCurrentPassword] = useState('')
   const [password, setPassword] = useState('')
   const [profileState, runProfile] = useAction()
   const [passwordState, runPassword] = useAction()
+  const [everywhereState, runEverywhere] = useAction()
 
   useEffect(() => { setName(user?.name ?? '') }, [user?.name])
   useEffect(() => { setEmail(user?.email ?? '') }, [user?.email])
 
   const profileDirty = name !== (user?.name ?? '') || email !== (user?.email ?? '')
-  useDirty(profileDirty || password !== '')
+  useDirty(profileDirty || password !== '' || currentPassword !== '')
 
   const saveProfile = () => runProfile(async () => {
     if (!name.trim() || !email.trim()) throw new Error('name and email are required')
@@ -42,11 +48,18 @@ export default function AccountSection() {
 
   const tooShort = password.length > 0 && password.length < MIN_PASSWORD
   const changePassword = () => runPassword(async () => {
-    await usersApi.updateMe({ password })
+    const res = await usersApi.updateMe({ password, current_password: currentPassword })
+    // Other sessions are signed out; this one continues with the new token
+    if (res.access_token) setToken(res.access_token)
     setPassword('')
-  }, 'Password changed', "Couldn't change the password")
+    setCurrentPassword('')
+  }, 'Password changed. Your other sessions were signed out and your API tokens revoked.', "Couldn't change the password")
 
   const signOut = () => { if (requestLeave()) logout() }
+  const signOutEverywhere = () => runEverywhere(async () => {
+    await authApi.logoutAll()
+    logout()
+  }, undefined, "Couldn't sign out everywhere")
 
   return (
     <div className="space-y-4">
@@ -70,6 +83,12 @@ export default function AccountSection() {
       <section aria-labelledby="account-password" className="rounded-lg border border-dark-border/60 bg-dark-bg-secondary/50 p-4 space-y-3">
         <h3 id="account-password" className="text-sm font-medium text-dark-text-primary">Password</h3>
         <PasswordField
+          label="Current password"
+          value={currentPassword}
+          onChange={setCurrentPassword}
+          autoComplete="current-password"
+        />
+        <PasswordField
           label="New password"
           value={password}
           onChange={setPassword}
@@ -77,12 +96,14 @@ export default function AccountSection() {
         />
         <ActionRow>
           <ActionButton variant="primary" onClick={changePassword} busy={passwordState.status === 'busy'}
-                        disabled={password.length < MIN_PASSWORD}>
+                        disabled={password.length < MIN_PASSWORD || currentPassword === ''}>
             Change password
           </ActionButton>
           <ActionStatus state={passwordState} />
         </ActionRow>
       </section>
+
+      <ApiTokensCard />
 
       <section aria-labelledby="account-appearance" className="rounded-lg border border-dark-border/60 bg-dark-bg-secondary/50 p-4 space-y-3">
         <div>
@@ -112,7 +133,15 @@ export default function AccountSection() {
       <section className="rounded-lg border border-dark-border/60 bg-dark-bg-secondary/50 p-4 flex flex-wrap items-center gap-2">
         <ActionButton onClick={() => setShowShortcuts(true)}><Keyboard size={13} /> Keyboard shortcuts</ActionButton>
         <span className="flex-1" />
+        <ConfirmButton
+          label="Sign out everywhere"
+          prompt="Sign out on every device, including this one? Your API tokens are revoked too."
+          confirmLabel="Sign out everywhere"
+          busy={everywhereState.status === 'busy'}
+          onConfirm={signOutEverywhere}
+        />
         <ActionButton onClick={signOut}><LogOut size={13} /> Sign out</ActionButton>
+        <ErrorStatus state={everywhereState} />
       </section>
     </div>
   )

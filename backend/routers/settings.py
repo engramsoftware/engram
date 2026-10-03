@@ -18,7 +18,7 @@ from bson import ObjectId
 
 from config import get_settings
 from database import get_database
-from routers.auth import get_current_user
+from routers.auth import get_current_user, require_admin, user_for_session_token
 from llm.factory import create_provider, get_available_providers
 from llm.registry import get_spec
 from llm.base import ModelInfo
@@ -727,7 +727,7 @@ class LogLevelRequest(BaseModel):
 
 @router.get("/logging", response_model=LoggingConfigResponse)
 async def get_logging_config(
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_admin)
 ) -> LoggingConfigResponse:
     """Get current logging levels for all module groups."""
     root = logging.getLogger()
@@ -751,7 +751,7 @@ async def get_logging_config(
 @router.put("/logging")
 async def update_logging_config(
     request: LogLevelRequest,
-    current_user: dict = Depends(get_current_user)
+    current_user: dict = Depends(require_admin)
 ) -> dict:
     """Update logging levels. Changes take effect immediately (no restart needed)."""
     changes: List[str] = []
@@ -849,7 +849,7 @@ logging.getLogger().addHandler(_buffer_handler)
 
 @router.get("/logs")
 async def get_recent_logs(
-    current_user: dict = Depends(get_current_user),
+    current_user: dict = Depends(require_admin),
     limit: int = Query(200, ge=1, le=500),
     level: Optional[str] = Query(None, description="Minimum level filter: DEBUG, INFO, WARNING, ERROR"),
     search: Optional[str] = Query(None, description="Search in log messages"),
@@ -887,17 +887,12 @@ async def stream_logs(
     EventSource API doesn't support custom headers, so the JWT token
     is passed as a query parameter instead of an Authorization header.
     """
-    # Authenticate via query-param token (EventSource limitation)
-    if not token:
-        raise HTTPException(401, "Token required")
-    from jose import JWTError, jwt as jose_jwt
-    settings = get_settings()
-    try:
-        payload = jose_jwt.decode(token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
-        if not payload.get("sub"):
-            raise HTTPException(401, "Invalid token")
-    except JWTError:
-        raise HTTPException(401, "Invalid or expired token")
+    # Authenticate via query-param token (EventSource limitation); admins only
+    user = await user_for_session_token(token) if token else None
+    if not user:
+        raise HTTPException(401, "Your session has ended. Please sign in again.")
+    if not user["is_admin"]:
+        raise HTTPException(403, "Only an admin can do this")
 
     min_level = 0
     if level:
@@ -907,10 +902,19 @@ async def stream_logs(
     _log_subscribers.add(queue)
 
     async def event_generator():
+        last_check = time.monotonic()
         try:
             # Send a keepalive comment so the connection is established
             yield ": connected\n\n"
             while True:
+                # Re-check the session every 30s: a demoted admin or an ended
+                # session stops receiving logs
+                if time.monotonic() - last_check >= 30:
+                    last_check = time.monotonic()
+                    still = await user_for_session_token(token)
+                    if not still or not still["is_admin"]:
+                        yield "event: end\ndata: {}\n\n"
+                        return
                 try:
                     entry = await asyncio.wait_for(queue.get(), timeout=30.0)
                     # Apply level filter

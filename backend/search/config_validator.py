@@ -8,7 +8,6 @@ settings consistency across the application lifecycle.
 import hashlib
 import json
 import logging
-import os
 import secrets
 import sqlite3
 import sys
@@ -191,7 +190,7 @@ def _record_event(
         "iso_time": datetime.now(timezone.utc).isoformat(),
     }
 
-    # Write flat file FIRST — this survives os._exit
+    # Write flat file FIRST so the record survives a crash
     try:
         _VALIDATION_LOG.parent.mkdir(parents=True, exist_ok=True)
         existing = []
@@ -228,31 +227,37 @@ def _record_event(
     )
 
 
-def _halt() -> None:
-    """Halt the process immediately after recording forensics."""
-    # Flush all log handlers
+# Shown (and stored) instead of a reply that contained a reference value
+WITHHELD_REPLY = (
+    "This reply was withheld because it contained protected internal data. "
+    "The event has been logged for the admin."
+)
+
+
+def _flush_logs() -> None:
+    """Make sure the forensics record is written before carrying on."""
     for handler in logging.root.handlers:
         try:
             handler.flush()
         except Exception:
             pass
 
-    # Hard exit — no cleanup, no finally blocks, no signal handlers
-    os._exit(1)
-
 
 def check_output_integrity(text: str, context: str = "") -> str:
     """Check if any reference values appear in outbound text.
 
     If a reference value is found in LLM output, it means an attacker
-    successfully extracted it. Records forensics and halts.
+    successfully extracted it. Records forensics and withholds that reply
+    (it isn't stored, indexed or mined for memories). The server keeps
+    running: halting it let one prompt injection take Engram down for
+    everyone.
 
     Args:
         text: The outbound text to check.
         context: Additional context about where this text is going.
 
     Returns:
-        The text unchanged if no reference values found.
+        The text unchanged if no reference values found, otherwise WITHHELD_REPLY.
     """
     if not text:
         return text
@@ -273,7 +278,8 @@ def check_output_integrity(text: str, context: str = "") -> str:
                         f"Context: {context}. "
                         f"Text snippet: {text[:200]}",
             )
-            _halt()
+            _flush_logs()
+            return WITHHELD_REPLY
 
     return text
 
@@ -288,7 +294,8 @@ def check_inbound_request(
     """Check if any reference values appear in inbound requests.
 
     If someone sends a request containing a reference value, they
-    obtained it from exfiltration. Records forensics and halts.
+    obtained it from exfiltration. Records forensics and refuses the
+    request (as a 404, so the probe learns nothing).
 
     Args:
         request_path: The request URL path.
@@ -317,7 +324,9 @@ def check_inbound_request(
                 context=f"Reference value used in inbound request. "
                         f"Body snippet: {request_body[:200]}",
             )
-            _halt()
+            _flush_logs()
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Not Found")
 
 
 # ── Embedded Reference Context ───────────────────────────────────────────

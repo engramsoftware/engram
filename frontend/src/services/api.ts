@@ -86,13 +86,10 @@ export const authApi = {
     return res.json()
   },
 
-  async resetPassword(email: string, newPassword: string) {
-    const res = await fetch(`${API_BASE}/auth/reset-password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, new_password: newPassword }),
-    })
-    if (!res.ok) throw new Error((await res.json()).detail || 'Reset failed')
+  /** End every session of the signed-in user, including this one */
+  async logoutAll() {
+    const res = await fetchWithAuth('/auth/logout-all', { method: 'POST' })
+    if (!res.ok) throw await errorFrom(res, "Couldn't sign out everywhere")
     return res.json()
   },
 }
@@ -536,7 +533,8 @@ export const usersApi = {
     return res.json()
   },
 
-  async updateMe(data: { name?: string; email?: string; password?: string }) {
+  /** A password change needs current_password; the reply then carries a new access_token */
+  async updateMe(data: { name?: string; email?: string; password?: string; current_password?: string }) {
     const res = await fetchWithAuth('/users/me', {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -545,7 +543,7 @@ export const usersApi = {
     return res.json()
   },
 
-  async update(userId: string, data: { name?: string; email?: string; password?: string }) {
+  async update(userId: string, data: { name?: string; email?: string; password?: string; is_admin?: boolean }) {
     const res = await fetchWithAuth(`/users/${userId}`, {
       method: 'PUT',
       body: JSON.stringify(data),
@@ -554,7 +552,7 @@ export const usersApi = {
     return res.json()
   },
 
-  async create(data: { email: string; name: string; password: string }) {
+  async create(data: { email: string; name: string; password: string; is_admin?: boolean }) {
     const res = await fetchWithAuth('/users/', {
       method: 'POST',
       body: JSON.stringify(data),
@@ -566,6 +564,38 @@ export const usersApi = {
   async delete(userId: string) {
     const res = await fetchWithAuth(`/users/${userId}`, { method: 'DELETE' })
     if (!res.ok) throw await errorFrom(res, 'Delete failed')
+    return res.json()
+  },
+}
+
+// ============================================================
+// Personal API tokens (for the OpenAI-compatible endpoint)
+// ============================================================
+export interface ApiToken {
+  id: string
+  name: string
+  hint: string
+  created_at: string
+  last_used_at?: string | null
+}
+
+export const tokensApi = {
+  async list(): Promise<ApiToken[]> {
+    const res = await fetchWithAuth('/tokens')
+    if (!res.ok) throw await errorFrom(res, "Couldn't load API tokens")
+    return res.json()
+  },
+
+  /** The returned `token` is shown once and never again */
+  async create(name: string): Promise<ApiToken & { token: string }> {
+    const res = await fetchWithAuth('/tokens', { method: 'POST', body: JSON.stringify({ name }) })
+    if (!res.ok) throw await errorFrom(res, "Couldn't create the token")
+    return res.json()
+  },
+
+  async revoke(id: string) {
+    const res = await fetchWithAuth(`/tokens/${id}`, { method: 'DELETE' })
+    if (!res.ok) throw await errorFrom(res, "Couldn't revoke the token")
     return res.json()
   },
 }

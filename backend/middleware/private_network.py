@@ -28,6 +28,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from config import get_settings
+from middleware.client_ip import client_ip as _client_ip, parse_networks
 
 logger = logging.getLogger(__name__)
 
@@ -105,9 +106,9 @@ def _is_private_ip(ip_str: str, extra_networks: list) -> bool:
 class PrivateNetworkMiddleware(BaseHTTPMiddleware):
     """Middleware that blocks requests from non-private IP addresses.
 
-    Extracts the client IP from the request (respecting X-Forwarded-For if
-    behind a reverse proxy on the same LAN), then checks it against the
-    allowed private network ranges.
+    Extracts the client IP from the request (X-Forwarded-For only from
+    TRUSTED_PROXIES; see middleware/client_ip.py), then checks it against
+    the allowed private network ranges.
 
     Attributes:
         extra_networks: Additional allowed CIDRs from ALLOWED_NETWORKS env var.
@@ -116,6 +117,7 @@ class PrivateNetworkMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, allowed_networks_csv: str = ""):
         super().__init__(app)
         self.extra_networks = _parse_extra_networks(allowed_networks_csv)
+        self.trusted_proxies = parse_networks(get_settings().trusted_proxies)
         if self.extra_networks:
             logger.info(
                 f"PrivateNetworkMiddleware: {len(self.extra_networks)} extra "
@@ -137,15 +139,8 @@ class PrivateNetworkMiddleware(BaseHTTPMiddleware):
         if request.url.path in _UNRESTRICTED_PATHS:
             return await call_next(request)
 
-        # Get client IP — check X-Forwarded-For first (reverse proxy on LAN),
-        # then fall back to the direct connection IP.
-        client_ip = None
-        forwarded = request.headers.get("x-forwarded-for")
-        if forwarded:
-            # X-Forwarded-For can be "client, proxy1, proxy2" — take the first
-            client_ip = forwarded.split(",")[0].strip()
-        if not client_ip and request.client:
-            client_ip = request.client.host
+        # The connecting address, or the forwarded one when it comes from a trusted proxy
+        client_ip = _client_ip(request, self.trusted_proxies)
 
         if not client_ip:
             logger.warning("No client IP detected — blocking request")

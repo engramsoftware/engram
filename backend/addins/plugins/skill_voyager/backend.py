@@ -62,6 +62,12 @@ class Addin(AddinBase):
     description = "Voyager-style autonomous skill learning"
     addin_type = AddinType.HYBRID
     permissions = ["read_messages", "write_context", "local_llm"]
+    # Skills and settings are shared by every user (their text is added to
+    # everyone's chats), and test_llm/list_models make the server fetch a URL
+    admin_actions = frozenset({
+        "run_curriculum", "add_skill", "delete_skill", "toggle_auto_learn", "toggle_curriculum",
+        "update_settings", "test_llm", "list_models", "record_correction",
+    })
 
     def __init__(self, config: Dict[str, Any] = None):
         super().__init__(config)

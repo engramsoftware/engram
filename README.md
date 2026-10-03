@@ -65,10 +65,11 @@ docker compose logs -f   # view logs
 ### Uninstall
 
 ```bash
-docker compose down -v   # stop and delete all data
+docker compose down      # remove the container
+rm -rf ./data            # delete all data (users, chats, settings, secrets)
 ```
 
-Or keep your data and just remove the container: `docker compose down` (data persists in the Docker volume).
+Skip the `rm` to keep your data: it lives in the `./data` folder next to `docker-compose.yml`.
 
 ### Troubleshooting
 
@@ -387,11 +388,12 @@ Without any optional services, Engram still works with any LLM provider you conf
 
 If you use only local LLM providers (LM Studio, Ollama) and skip Neo4j, **nothing leaves your machine** except web search queries.
 
-All user data lives in a Docker volume (`engram-data`) mapped to `/data` inside the container:
+All user data lives in the `./data` folder, mounted at `/data` inside the container:
 
 ```
 /data/
 +-- app.db              # SQLite database (users, conversations, messages, settings)
++-- secrets.env         # Generated login and API-key encryption secrets (keep it with app.db)
 +-- chroma/             # Vector embeddings (memories, messages, documents)
 +-- mcp/                # MCP server databases (knowledge, interactions, reasoning)
 +-- learning/           # Skill transfer and adaptive retrieval data
@@ -400,7 +402,15 @@ All user data lives in a Docker volume (`engram-data`) mapped to `/data` inside 
 +-- logs/               # Service logs
 ```
 
-**To reset everything:** `docker compose down -v` removes the container and all data.
+**To reset everything:** `docker compose down`, then delete the `./data` folder.
+
+**Secrets:** on first start Engram generates a login secret and the key that encrypts your saved API keys, and keeps them in `data/secrets.env`, so they survive rebuilds. Back it up with `app.db`: without it, saved API keys can't be decrypted. Setting `JWT_SECRET_KEY` / `ENCRYPTION_KEY` in the environment overrides it.
+
+**Upgrading from a version that kept secrets inside the container** (before `data/secrets.env` existed): save them before you rebuild, or everyone is logged out and saved API keys must be re-entered:
+
+```bash
+docker exec engram sh -c "grep -E '^(JWT_SECRET_KEY|ENCRYPTION_KEY)=' /app/.env > /data/secrets.env"
+```
 
 **To back up data:** `docker cp engram:/data ./backup`
 

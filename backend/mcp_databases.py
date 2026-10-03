@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 # Database paths - centralized under data/mcp/
 from config import MCP_DATA_DIR, MCP_USER_INTERACTIONS_DB, MCP_AI_REASONING_DB
+from mcp_knowledge_db import top_keywords
 USER_DB_PATH = MCP_USER_INTERACTIONS_DB
 AI_DB_PATH = MCP_AI_REASONING_DB
 
@@ -169,7 +170,7 @@ class UserInteractionsDB:
             complexity = "medium"
         
         return {
-            "keywords": list(set(keywords))[:30],
+            "keywords": top_keywords(keywords, 30),
             "technologies": technologies,
             "error_messages": error_patterns,
             "problem_type": problem_type,
@@ -507,7 +508,7 @@ class AIReasoningDB:
         all_text = f"{task_context} {thought_process} {decision} {approach_summary}"
         stop_words = {'the', 'a', 'an', 'is', 'are', 'to', 'of', 'in', 'for', 'on', 'with', 'and', 'but', 'or', 'i'}
         words = re.findall(r'\b[a-zA-Z]{4,}\b', all_text.lower())
-        keywords = list(set(w for w in words if w not in stop_words))[:30]
+        keywords = top_keywords([w for w in words if w not in stop_words], 30)
         
         patterns = self._extract_patterns(thought_process, decision)
         

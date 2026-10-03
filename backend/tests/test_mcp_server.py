@@ -52,14 +52,20 @@ def call(name, arguments=None):
 
 
 class FakeGraph:
-    """A Neo4j store whose writes all fail the way the real one does: by returning False."""
+    """A Neo4j store. ok=False: every write fails the way the real one does, by returning False."""
     is_available = True
 
+    def __init__(self, ok):
+        self.ok = ok
+        self.calls = []
+
     def add_node(self, node, user_id):
-        return False
+        self.calls.append(("add_node", node.name))
+        return self.ok
 
     def add_relationship_dynamic(self, **kwargs):
-        return False
+        self.calls.append(("rel", kwargs["from_node"], kwargs["to_node"]))
+        return self.ok
 
     def invalidate_relationships(self, *args, **kwargs):
         return 0
@@ -87,6 +93,28 @@ def test_record_skill_outcome_updates_a_real_skill(mcp):
     assert not is_error and body["updated_in"] == ["mcp-sqlite"]
 
 
+def test_record_skill_outcome_accepts_solution_ids_from_find_skill(mcp):
+    call("store_solution", {"problem": "cors error on fetch", "solution": "add the header"})
+    _, found = call("find_skill", {"query": "cors error"})
+    solution = found["skills"][0]
+    assert solution["source"] == "sqlite_solutions"
+    is_error, body = call("record_skill_outcome", {"skill_id": solution["id"], "successful": True})
+    assert not is_error and body["updated_in"] == ["mcp-sqlite-solutions"]
+
+
+def test_record_skill_outcome_names_a_failed_write(mcp, monkeypatch):
+    class Store:
+        async def get_skill(self, skill_id):
+            return pytypes.SimpleNamespace(confidence=0.5)
+
+        async def update_skill_usage(self, skill_id, successful):
+            raise PermissionError("read-only file")
+
+    monkeypatch.setattr(mcp_server, "get_skill_store", lambda: Store())
+    is_error, body = call("record_skill_outcome", {"skill_id": "abc", "successful": True})
+    assert is_error and "read-only file" in body and "Unknown" not in body
+
+
 def test_record_playbook_outcome_updates_a_real_playbook(mcp):
     _, created = call("create_playbook", {"name": "p", "description": "d", "steps": [{"step": 1, "action": "do it"}]})
     is_error, body = call("record_playbook_outcome", {"playbook_id": created["playbook_id"], "successful": True})
@@ -95,23 +123,33 @@ def test_record_playbook_outcome_updates_a_real_playbook(mcp):
 
 # ── Reports only what was stored ───────────────────────────────────
 
-def test_store_code_entity_does_not_claim_a_failed_graph_write(mcp, monkeypatch):
-    monkeypatch.setattr(mcp_server, "get_graph_store", lambda: FakeGraph())
+@pytest.mark.parametrize("ok", [True, False])
+def test_store_code_entity_reports_the_graph_write(mcp, monkeypatch, ok):
+    graph = FakeGraph(ok)
+    monkeypatch.setattr(mcp_server, "get_graph_store", lambda: graph)
     is_error, body = call("store_code_entity", {"name": "f", "entity_type": "function", "related_to": ["g"]})
     assert not is_error
-    assert body["stored_in"] == ["mcp-sqlite"] and body["relationships_created"] == 0
+    assert ("add_node", "f") in graph.calls  # the graph is really reached
+    assert body["stored_in"] == (["neo4j", "mcp-sqlite"] if ok else ["mcp-sqlite"])
+    assert body["relationships_created"] == (1 if ok else 0)
 
 
-def test_link_entities_does_not_claim_a_failed_graph_write(mcp, monkeypatch):
-    monkeypatch.setattr(mcp_server, "get_graph_store", lambda: FakeGraph())
+@pytest.mark.parametrize("ok", [True, False])
+def test_link_entities_reports_the_graph_write(mcp, monkeypatch, ok):
+    graph = FakeGraph(ok)
+    monkeypatch.setattr(mcp_server, "get_graph_store", lambda: graph)
     _, body = call("link_entities", {"from_entity": "a", "to_entity": "b", "relationship": "USES"})
-    assert body["stored_in"] == ["mcp-sqlite"]
+    assert graph.calls == [("rel", "a", "b")]
+    assert body["stored_in"] == (["neo4j", "mcp-sqlite"] if ok else ["mcp-sqlite"])
 
 
-def test_store_solution_does_not_claim_a_failed_graph_write(mcp, monkeypatch):
-    monkeypatch.setattr(mcp_server, "get_graph_store", lambda: FakeGraph())
+@pytest.mark.parametrize("ok", [True, False])
+def test_store_solution_reports_the_graph_write(mcp, monkeypatch, ok):
+    graph = FakeGraph(ok)
+    monkeypatch.setattr(mcp_server, "get_graph_store", lambda: graph)
     _, body = call("store_solution", {"problem": "p", "solution": "s"})
-    assert body["stored_in"] == ["mcp-sqlite"]
+    assert sum(1 for c in graph.calls if c[0] == "add_node") == 2
+    assert body["stored_in"] == (["neo4j", "mcp-sqlite"] if ok else ["mcp-sqlite"])
 
 
 def test_memories_round_trip_through_the_mcp_store(mcp):
@@ -152,6 +190,11 @@ def test_create_session_only_passes_supported_arguments(mcp, monkeypatch):
     assert body["source"] == "json-file" and seen  # used to TypeError and fall back to SQLite
 
 
+def test_find_skill_omits_empty_related_context(mcp):
+    _, body = call("find_skill", {"query": "nothing stored yet"})
+    assert "related_context" not in body
+
+
 def test_find_skill_returns_related_context(mcp, monkeypatch):
     class Search:
         def find_relevant_context(self, task_description):  # no max_items parameter
@@ -167,6 +210,17 @@ def test_tool_calls_are_not_logged_as_user_history(mcp):
     call("find_skill", {"query": "anything"})
     stats = mcp_databases.get_user_interactions_db().get_stats()
     assert stats["total_interactions"] == 0
+
+
+def test_old_auto_logged_tool_calls_stay_out_of_searches(mcp):
+    db = mcp_databases.get_user_interactions_db()
+    db.add_interaction(user_message="Tool: store_memory(content=postgres password hunter2)", message_type="tool_call")
+    db.add_interaction(user_message="How do I tune postgres?", message_type="question")
+    for mode in (mcp_databases.SearchMode.KEYWORD, mcp_databases.SearchMode.SEMANTIC):
+        found = [r["user_message"] for r in db.search("postgres", mode=mode)]
+        assert found == ["How do I tune postgres?"], mode
+    _, body = call("find_skill", {"query": "postgres"})
+    assert "hunter2" not in json.dumps(body)
 
 
 def test_stats_fallbacks_match_the_schema(mcp, monkeypatch):

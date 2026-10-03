@@ -65,8 +65,8 @@ docker compose logs -f   # view logs
 ### Uninstall
 
 ```bash
-docker compose down      # remove the container
-rm -rf ./data            # delete all data (users, chats, settings, secrets)
+docker compose down -v   # remove the container and the model cache volume
+sudo rm -rf ./data       # delete all data: users, chats, settings, secrets (files are root-owned on Linux)
 ```
 
 Skip the `rm` to keep your data: it lives in the `./data` folder next to `docker-compose.yml`.
@@ -346,7 +346,7 @@ LLM provider API keys are configured through the **Settings** tab in the app. Th
 
 ### Environment Variables
 
-You can set environment variables in `docker-compose.yml` or mount a `.env` file. See `backend/.env.example` for all options.
+You can set environment variables in `docker-compose.yml` or mount a `.env` file read-only (`./backend/.env:/app/.env:ro`). See `backend/.env.example` for all options.
 
 ### Local LLM Providers (LM Studio, Ollama, llama.cpp)
 
@@ -402,15 +402,17 @@ All user data lives in the `./data` folder, mounted at `/data` inside the contai
 +-- logs/               # Service logs
 ```
 
-**To reset everything:** `docker compose down`, then delete the `./data` folder.
+**To reset everything:** `docker compose down`, then delete the `./data` folder (`sudo rm -rf ./data` on Linux).
 
 **Secrets:** on first start Engram generates a login secret and the key that encrypts your saved API keys, and keeps them in `data/secrets.env`, so they survive rebuilds. Back it up with `app.db`: without it, saved API keys can't be decrypted. Setting `JWT_SECRET_KEY` / `ENCRYPTION_KEY` in the environment overrides it.
 
-**Upgrading from a version that kept secrets inside the container** (before `data/secrets.env` existed): save them before you rebuild, or everyone is logged out and saved API keys must be re-entered:
+**Upgrading from a version that kept secrets inside the container** (before `data/secrets.env` existed): those secrets exist only in the current container, so save them while it still exists: before `docker compose down`, `up --build` or any other step that replaces it (`docker start engram` first if it is stopped). Otherwise everyone is logged out and saved API keys must be re-entered.
 
 ```bash
-docker exec engram sh -c "grep -E '^(JWT_SECRET_KEY|ENCRYPTION_KEY)=' /app/.env > /data/secrets.env"
+docker exec engram sh -c "umask 077; grep -E '^(JWT_SECRET_KEY|ENCRYPTION_KEY)=' /app/.env | grep -v '=change-me' > /data/secrets.env"
 ```
+
+If you set `JWT_SECRET_KEY` / `ENCRYPTION_KEY` as environment variables, nothing changes: keep them set.
 
 **To back up data:** `docker cp engram:/data ./backup`
 

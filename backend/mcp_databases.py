@@ -54,6 +54,12 @@ class SearchMode(str, Enum):
 # DATABASE 2: User Interactions
 # =============================================================================
 
+# Rows the MCP server used to auto-log for every tool call ("Tool: name(args)").
+# They are not user requests, and they can hold code or secrets from tool
+# arguments, so searches skip them.
+NOT_TOOL_CALL = "COALESCE(message_type, '') != 'tool_call'"
+
+
 class UserInteractionsDB:
     """
     Stores user messages and requests made to the MCP.
@@ -268,14 +274,14 @@ class UserInteractionsDB:
                 rows = conn.execute("""
                     SELECT i.* FROM interactions i
                     JOIN interactions_fts fts ON i.id = fts.id
-                    WHERE interactions_fts MATCH ?
+                    WHERE interactions_fts MATCH ? AND COALESCE(i.message_type, '') != 'tool_call'
                     ORDER BY rank
                     LIMIT ?
                 """, (query, limit)).fetchall()
             
             else:
                 # Build dynamic query
-                conditions = []
+                conditions = [NOT_TOOL_CALL]
                 params = []
                 
                 if query:

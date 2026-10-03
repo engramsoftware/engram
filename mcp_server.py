@@ -245,18 +245,13 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="search_memories",
-            description="Search past memories for relevant context. Requires ChromaDB to be configured.",
+            description="Search memories saved with store_memory (keyword match in the MCP knowledge base).",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
                         "description": "Search query"
-                    },
-                    "user_id": {
-                        "type": "string",
-                        "description": "User ID for filtering (default: 'windsurf')",
-                        "default": "windsurf"
                     },
                     "limit": {
                         "type": "integer",
@@ -297,11 +292,6 @@ async def list_tools() -> List[Tool]:
                         "description": "Type of memory",
                         "enum": ["fact", "preference", "decision", "experience", "negative"],
                         "default": "fact"
-                    },
-                    "user_id": {
-                        "type": "string",
-                        "description": "User ID (default: 'windsurf')",
-                        "default": "windsurf"
                     },
                     "tags": {
                         "type": "array",
@@ -972,6 +962,8 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             try:
                 from mcp_databases import get_unified_search
                 auto_context = get_unified_search().find_relevant_context(arguments["query"])
+                if auto_context == "No relevant context found.":
+                    auto_context = None
             except Exception as e:
                 logger.warning(f"Related context for find_skill failed: {e}")
         
@@ -1263,7 +1255,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 
                 # Create node in Neo4j
                 node = GraphNode(
-                    label=NodeType.Entity,
+                    label=NodeType.ENTITY,
                     name=name_val,
                     node_type=entity_type,
                     properties={
@@ -1330,7 +1322,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     
                     # Create problem node
                     problem_node = GraphNode(
-                        label=NodeType.Entity,
+                        label=NodeType.ENTITY,
                         name=prob_name,
                         node_type="error",
                         properties={"full_text": problem},
@@ -1341,7 +1333,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     
                     # Create solution node
                     solution_node = GraphNode(
-                        label=NodeType.Entity,
+                        label=NodeType.ENTITY,
                         name=sol_name,
                         node_type="solution",
                         properties={
@@ -1369,7 +1361,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     # Link technologies using dynamic labels
                     for tech in technologies:
                         tech_node = GraphNode(
-                            label=NodeType.Entity,
+                            label=NodeType.ENTITY,
                             name=tech,
                             node_type="technology",
                             created_at=datetime.utcnow(),
@@ -1619,6 +1611,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             successful = arguments.get("successful", False)
             new_confidence = None
             updated_in = []
+            json_error = None
             
             # A skill lives in the JSON skill store, the SQLite one, or both (with
             # different ids); update whichever has this id
@@ -1631,13 +1624,20 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                         new_confidence = skill.confidence
                         updated_in.append("json-file")
                 except Exception as e:
+                    json_error = e
                     logger.warning(f"Learning store: skill outcome failed: {e}, using SQLite")
             
             from mcp_knowledge_db import get_mcp_knowledge_db
-            if get_mcp_knowledge_db().update_skill_usage(skill_id, successful):
+            db = get_mcp_knowledge_db()
+            if db.update_skill_usage(skill_id, successful):
                 updated_in.append("mcp-sqlite")
+            elif not updated_in and db.update_solution_usage(skill_id, successful):
+                # find_skill also lists stored solutions, and tells the editor to report them here
+                updated_in.append("mcp-sqlite-solutions")
             
             if not updated_in:
+                if json_error:
+                    raise RuntimeError(f"Could not record the outcome for skill {skill_id}: {json_error}")
                 raise ValueError(f"Unknown skill_id: {skill_id}")
             
             return [TextContent(type="text", text=json.dumps({

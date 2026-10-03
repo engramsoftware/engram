@@ -323,6 +323,19 @@ class MCPKnowledgeDB:
                 """, (datetime.utcnow().isoformat(), skill_id))
             return cur.rowcount > 0
     
+    def update_solution_usage(self, solution_id: str, successful: bool) -> bool:
+        """Count a successful reuse of a stored solution. False when no solution has that id.
+
+        The solutions table only tracks successes, so a failed reuse changes nothing
+        (but still confirms the id exists).
+        """
+        with self._get_conn() as conn:
+            if successful:
+                cur = conn.execute(
+                    "UPDATE solutions SET success_count = success_count + 1 WHERE id = ?", (solution_id,))
+                return cur.rowcount > 0
+            return conn.execute("SELECT 1 FROM solutions WHERE id = ?", (solution_id,)).fetchone() is not None
+
     # ==================== SESSIONS ====================
     
     def create_session(self, session: Dict[str, Any]) -> str:

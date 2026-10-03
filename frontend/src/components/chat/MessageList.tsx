@@ -38,7 +38,7 @@ export default function MessageList({ messages, isStreaming = false, isLoading =
   }
 
   return (
-    <div>
+    <div className="py-4">
       {messages.map((message, idx) => (
         <MessageBubble
           key={message.id}

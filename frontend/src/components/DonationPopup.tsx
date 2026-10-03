@@ -58,7 +58,7 @@ export default function DonationPopup() {
 
         {/* Header with heart icon */}
         <div className="px-6 pt-8 pb-4 text-center">
-          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-pink-500/20 to-red-500/20 border border-pink-500/30">
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-pink-500/15 border border-pink-500/30">
             <Heart size={32} className="text-pink-400" fill="currentColor" />
           </div>
           <h2 id="donation-title" className="text-xl font-bold text-dark-text-primary mb-2">

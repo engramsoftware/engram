@@ -6,7 +6,6 @@
 import { useEffect, useState } from 'react'
 import {
   MessageSquarePlus,
-  MessageSquare,
   Search,
   Settings,
   User,
@@ -115,11 +114,11 @@ export default function Sidebar() {
       <div className="p-3">
         <button
           onClick={handleNewChat}
-          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg
-                     bg-dark-accent-primary hover:bg-dark-accent-hover
-                     text-white font-medium transition-colors"
+          className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl
+                     bg-dark-bg-secondary hover:bg-dark-bg-secondary/60
+                     border border-dark-border text-dark-text-primary text-sm font-medium"
         >
-          <MessageSquarePlus size={18} />
+          <MessageSquarePlus size={18} className="text-dark-accent-text" />
           <span>New Chat</span>
         </button>
       </div>
@@ -127,9 +126,8 @@ export default function Sidebar() {
       {/* Conversations Section */}
       <div className="flex-1 overflow-y-auto">
         <div className="px-3 py-2">
-          <div className="flex items-center gap-2 px-2 py-1.5 text-dark-text-secondary text-sm">
-            <MessageSquare size={16} />
-            <span>Chats</span>
+          <div className="px-2 py-1.5 text-dark-text-secondary text-[11px] font-medium uppercase tracking-wider">
+            Chats
           </div>
           {conversationsStatus === 'error' ? (
             <div className="px-2 py-2 text-xs text-dark-text-secondary">
@@ -178,10 +176,10 @@ export default function Sidebar() {
             target="_blank"
             rel="noopener noreferrer"
             className="w-full flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg
-                       text-xs text-pink-400 hover:text-pink-300 hover:bg-pink-500/10
+                       text-xs text-dark-text-secondary hover:text-dark-text-primary hover:bg-dark-bg-secondary
                        transition-colors"
           >
-            <Heart size={13} fill="currentColor" />
+            <Heart size={13} />
             <span>Support Engram</span>
           </a>
         </div>

@@ -46,7 +46,7 @@ export default function WebSourceCards({ sources }: Props) {
     <div className="mb-4 rounded-xl border border-dark-border/40 bg-dark-bg-secondary/20 overflow-hidden">
       {/* Header bar */}
       <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-dark-border/30
-                      bg-gradient-to-r from-indigo-500/5 to-purple-500/5">
+                      bg-dark-bg-secondary/50">
         <div className="flex items-center justify-center w-5 h-5 rounded-md bg-indigo-500/15">
           <Search size={11} className="text-indigo-400" />
         </div>

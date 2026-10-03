@@ -304,7 +304,7 @@ export default function MessageInput({ onSend, disabled }: Props) {
           placeholder="Type a message... (/ for commands)"
           disabled={disabled}
           rows={1}
-          className="flex-1 bg-dark-bg-secondary border border-dark-border rounded-xl
+          className="flex-1 bg-dark-bg-secondary border border-transparent rounded-2xl
                      px-3 py-2.5 sm:px-4 sm:py-3 text-base
                      text-dark-text-primary placeholder-dark-text-secondary
                      resize-none focus:outline-none focus:border-dark-accent-primary
@@ -315,10 +315,10 @@ export default function MessageInput({ onSend, disabled }: Props) {
           aria-label="Send message"
           disabled={disabled || (!content.trim() && pendingImages.length === 0)}
           className="p-2.5 sm:p-3 bg-dark-accent-primary hover:bg-dark-accent-hover
-                     rounded-xl text-white disabled:opacity-50 disabled:cursor-not-allowed
+                     rounded-full text-white disabled:opacity-40 disabled:cursor-not-allowed
                      transition-colors flex-shrink-0"
         >
-          <Send size={20} />
+          <Send size={18} />
         </button>
       </div>
     </div>

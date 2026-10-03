@@ -157,10 +157,7 @@ class SkillGenerator:
                 fernet = Fernet(base64.urlsafe_b64encode(key_bytes))
                 api_key = fernet.decrypt(encrypted.encode()).decode()
 
-            # Base URL only for local providers
-            base_url = None
-            if provider_name in ("lmstudio", "ollama"):
-                base_url = provider_config.get("baseUrl")
+            base_url = provider_config.get("baseUrl")
 
             model = provider_config.get("defaultModel")
 
@@ -188,6 +185,7 @@ class SkillGenerator:
         if self._llm_provider is None:
             try:
                 from llm.factory import create_provider
+                from llm.registry import PROVIDER_SPECS
                 from config import get_settings
                 settings = get_settings()
 
@@ -211,25 +209,10 @@ class SkillGenerator:
                         logger.debug(f"User provider init failed: {e}")
 
                 # 2. Try local providers (free, no API key needed)
-                if getattr(settings, "lmstudio_base_url", None):
-                    try:
-                        self._llm_provider = create_provider(
-                            "lmstudio",
-                            base_url=settings.lmstudio_base_url,
-                        )
+                for spec in PROVIDER_SPECS.values():
+                    if spec.local and getattr(settings, spec.env_base_url or "", None):
+                        self._llm_provider = create_provider(spec.id, use_env_fallback=True)
                         return self._llm_provider
-                    except Exception:
-                        pass
-
-                if getattr(settings, "ollama_base_url", None):
-                    try:
-                        self._llm_provider = create_provider(
-                            "ollama",
-                            base_url=settings.ollama_base_url,
-                        )
-                        return self._llm_provider
-                    except Exception:
-                        pass
 
                 # 3. .env fallback keys — validate before using
                 def _key_looks_valid(key: str) -> bool:
@@ -239,17 +222,10 @@ class SkillGenerator:
                     placeholders = {"your-", "sk-xxx", "placeholder", "changeme", "test"}
                     return not any(p in key.lower() for p in placeholders)
 
-                if _key_looks_valid(getattr(settings, "anthropic_api_key", "")):
-                    self._llm_provider = create_provider(
-                        "anthropic",
-                        api_key=settings.anthropic_api_key,
-                        base_url=settings.anthropic_base_url,
-                    )
-                elif _key_looks_valid(getattr(settings, "openai_api_key", "")):
-                    self._llm_provider = create_provider(
-                        "openai",
-                        api_key=settings.openai_api_key,
-                    )
+                for name in ("anthropic", "openai"):
+                    if _key_looks_valid(getattr(settings, f"{name}_api_key", "")):
+                        self._llm_provider = create_provider(name, use_env_fallback=True)
+                        break
                 else:
                     logger.info(
                         "No valid LLM provider for skill generation "
@@ -287,15 +263,8 @@ class SkillGenerator:
             # Use the user's configured model, fall back to provider-specific defaults
             model_name = getattr(self, "_user_model", None)
             if not model_name:
-                from llm.anthropic_provider import ANTHROPIC_DEFAULT_MODEL
-                _FALLBACK_MODELS = {
-                    "AnthropicProvider": ANTHROPIC_DEFAULT_MODEL,
-                    "OpenAIProvider": "gpt-4o",
-                    "LMStudioProvider": "default",
-                    "OllamaProvider": "llama3",
-
-                }
-                model_name = _FALLBACK_MODELS.get(type(llm).__name__, ANTHROPIC_DEFAULT_MODEL)
+                from llm.registry import default_model
+                model_name = default_model(llm.provider_name)
             response = await llm.generate(
                 messages=[{"role": "user", "content": prompt}],
                 model=model_name,

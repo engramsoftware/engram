@@ -18,7 +18,7 @@ from database import get_database
 from routers.auth import get_current_user
 from models.message import MessageCreate, MessageResponse
 from llm.factory import create_provider
-from llm.anthropic_provider import ANTHROPIC_DEFAULT_MODEL
+from llm.registry import DEFAULT_PROVIDER, default_model, get_spec
 from search.hybrid_wrapper import HybridSearchWrapper
 from search.search_interface import SearchFilters
 from utils.encryption import decrypt_api_key
@@ -1122,7 +1122,7 @@ async def send_message(
                 provider_name = pname
                 break
         if not provider_name:
-            provider_name = "lmstudio"  # Default fallback
+            provider_name = DEFAULT_PROVIDER
     
     # Get provider config
     providers = llm_settings.get("providers", {})
@@ -1134,15 +1134,9 @@ async def send_message(
         if available_models:
             model_name = available_models[0]
     
-    # Hardcoded fallback defaults per provider (when DB has no models cached)
+    # Registry fallback (when DB has no models cached); "" lets the provider ask its server
     if not model_name:
-        _FALLBACK_MODELS = {
-            "openai": "gpt-4o",
-            "anthropic": ANTHROPIC_DEFAULT_MODEL,
-            "lmstudio": "default",
-            "ollama": "llama3",
-        }
-        model_name = _FALLBACK_MODELS.get(provider_name, "default")
+        model_name = default_model(provider_name)
     
     logger.info(f"Using provider: {provider_name}, model: {model_name}")
     
@@ -1166,13 +1160,12 @@ async def send_message(
     
     # Pre-flight check moved into the parallel gather below so it
     # doesn't block retrieval.  Only API-key checks (instant) run here.
-    _API_KEY_PROVIDERS = {"openai", "anthropic"}
-    _LOCAL_PROVIDERS = {"lmstudio", "ollama"}
+    _spec = get_spec(provider_name)
 
-    if provider_name in _API_KEY_PROVIDERS and not api_key:
+    if _spec.requires_api_key and not api_key:
         _preflight_error = (
-            f"⚠️ **{provider_name.title()} is selected but no API key is configured.**\n\n"
-            f"Go to **Settings → Models → {provider_name.title()}** and add your API key, "
+            f"⚠️ **{_spec.name} is selected but no API key is configured.**\n\n"
+            f"Go to **Settings → Models → {_spec.name}** and add your API key, "
             f"or switch to a different provider."
         )
         async def _alert_generator():
@@ -1455,43 +1448,28 @@ async def send_message(
             return ""
 
     async def _r_preflight() -> Optional[str]:
-        """Check local provider reachability (cached 60s).
+        """Check that a key-less (self-hosted) provider answers (cached 60s).
 
         Runs in parallel with retrieval so it doesn't add latency.
         Returns error string if provider is unreachable, None if OK.
         """
-        if provider_name not in _LOCAL_PROVIDERS:
-            return None
-        import httpx
-        _base = provider_config.get("baseUrl") or (
-            "http://host.docker.internal:1234" if provider_name == "lmstudio"
-            else "http://host.docker.internal:11434"
-        )
-        _cache_key = f"{provider_name}:{_base}"
+        if _spec.requires_api_key:
+            return None  # cloud APIs: a bad key surfaces on the real request
+        _cache_key = f"{provider_name}:{provider.base_url}"
         _now_ts = datetime.utcnow().timestamp()
         _cached = _preflight_cache.get(_cache_key)
         if _cached and (_now_ts - _cached["ts"]) < 60:
             return _cached.get("error")
-        try:
-            async with httpx.AsyncClient(timeout=2.0) as _client:
-                _resp = await _client.get(
-                    f"{_base}/v1/models" if provider_name == "lmstudio"
-                    else f"{_base}/api/tags"
-                )
-                if _resp.status_code >= 400:
-                    raise httpx.HTTPStatusError("bad", request=_resp.request, response=_resp)
-            _preflight_cache[_cache_key] = {"ts": _now_ts, "error": None}
-            return None
-        except Exception:
-            _server_name = "LM Studio" if provider_name == "lmstudio" else "Ollama"
+        err = None
+        if not await provider.test_connection(timeout=2.0):
             err = (
-                f"⚠️ **{_server_name} is selected but not reachable at `{_base}`.**\n\n"
-                f"Make sure {_server_name} is running and its API server is started. "
-                f"If running in Docker, the URL should be "
-                f"`http://host.docker.internal:{_base.split(':')[-1]}`."
+                f"⚠️ **{_spec.name} is selected but not reachable at `{provider.base_url or 'no URL set'}`.**\n\n"
+                f"Make sure the server is running and its API is started. "
+                f"If Engram runs in Docker, a server on this computer is at "
+                f"`http://host.docker.internal:<port>`."
             )
-            _preflight_cache[_cache_key] = {"ts": _now_ts, "error": err}
-            return err
+        _preflight_cache[_cache_key] = {"ts": _now_ts, "error": err}
+        return err
 
     # Phase 1: fire ALL independent retrievals + preflight at once
     # The preflight check runs in parallel so it adds ZERO latency.
@@ -1948,7 +1926,7 @@ async def send_message(
                             llm_provider=provider,
                             model=model_name,
                             api_key=api_key,
-                            base_url=base_url,
+                            base_url=provider_config.get("baseUrl"),
                         )
                         correction_note = build_correction_note(validation)
                         if correction_note:

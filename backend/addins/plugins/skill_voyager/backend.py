@@ -557,13 +557,26 @@ class Addin(AddinBase):
 
     # ── Internal Helpers ──────────────────────────────────────
 
+    @staticmethod
+    async def _probe_llm(provider_id: str, base_url: str, api_key: str) -> Optional[str]:
+        """Connect to one provider; a "Connected..." message on success, None if it fails."""
+        from llm.factory import create_provider
+
+        provider = create_provider(provider_id, api_key=api_key or None, base_url=base_url or None)
+        if not provider or not await provider.test_connection(timeout=5.0):
+            return None
+        models = await provider.list_models()
+        names = ", ".join(m.id for m in models[:5])
+        return f"Connected to {provider.base_url} — {len(models)} model(s): {names}"
+
     async def _test_llm_connection(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
         Test the LLM connection with the given settings.
         Called by the frontend Test button.
 
-        For local providers (lmstudio, ollama, auto): hits /v1/models endpoint.
-        For cloud providers (openai, anthropic): verifies API key format.
+        "auto" tries each local server (LM Studio, Ollama) at the typed URL, then
+        at its default address. Any other provider is connected to for real, key
+        and all, through the same provider classes the chat uses.
 
         Args:
             payload: Dict with provider, base_url, api_key, model keys.
@@ -571,53 +584,38 @@ class Addin(AddinBase):
         Returns:
             Dict with success bool and message string.
         """
-        import httpx
+        from llm.registry import PROVIDER_SPECS, get_spec
 
         provider = payload.get("provider", "auto")
-        base_url = payload.get("base_url", "").rstrip("/")
+        base_url = (payload.get("base_url") or "").strip()
         # The form never holds the saved key (see get_settings_schema)
         api_key = payload.get("api_key") or (self.config or {}).get("settings", {}).get("llm_api_key", "")
 
-        # Build URL list: user-provided first, then Docker-reachable defaults
-        if provider in ("auto", "lmstudio", "ollama"):
-            urls_to_try = []
-            if base_url:
-                urls_to_try.append(base_url.rstrip("/"))
-            if provider in ("auto", "lmstudio"):
-                urls_to_try.append("http://host.docker.internal:1234/v1")
-            if provider in ("auto", "ollama"):
-                urls_to_try.append("http://host.docker.internal:11434")
-
-            for url in urls_to_try:
-                try:
-                    models_url = f"{url}/v1/models" if "/v1" not in url else f"{url}/models"
-                    async with httpx.AsyncClient(timeout=5.0) as client:
-                        resp = await client.get(models_url)
-                        if resp.status_code == 200:
-                            data = resp.json()
-                            models = data.get("data", [])
-                            model_names = [m.get("id", "?") for m in models[:5]]
-                            return {
-                                "success": True,
-                                "message": f"Connected to {url} — {len(models)} model(s): {', '.join(model_names)}",
-                            }
-                except Exception:
-                    continue
-
+        if provider == "auto":
+            attempts = [
+                (spec.id, url)
+                for spec in PROVIDER_SPECS.values() if spec.local
+                for url in ([base_url] if base_url else []) + [""]
+            ]
+            for provider_id, url in attempts:
+                message = await self._probe_llm(provider_id, url, "")
+                if message:
+                    return {"success": True, "message": message}
             return {"success": False, "message": "No local LLM server found. Start LM Studio or Ollama first."}
 
-        # Cloud providers — validate key format
-        if provider == "openai":
-            if not api_key or not api_key.startswith("sk-"):
-                return {"success": False, "message": "Invalid OpenAI API key (should start with sk-)"}
-            return {"success": True, "message": "OpenAI API key format valid"}
+        spec = get_spec(provider)
+        if not spec:
+            return {"success": False, "message": f"Unknown provider: {provider}"}
+        if spec.requires_url and not base_url:
+            return {"success": False, "message": f"Enter the {spec.name} server URL first"}
+        if spec.requires_api_key and not api_key:
+            return {"success": False, "message": f"{spec.name} needs an API key"}
 
-        if provider == "anthropic":
-            if not api_key or not api_key.startswith("sk-ant-"):
-                return {"success": False, "message": "Invalid Anthropic API key (should start with sk-ant-)"}
-            return {"success": True, "message": "Anthropic API key format valid"}
-
-        return {"success": False, "message": f"Unknown provider: {provider}"}
+        message = await self._probe_llm(provider, base_url, api_key)
+        if message:
+            return {"success": True, "message": message}
+        return {"success": False, "message": f"Could not connect to {spec.name}"
+                                              + (f" at {base_url}" if base_url else "")}
 
     async def _list_models(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -630,36 +628,23 @@ class Addin(AddinBase):
         Returns:
             Dict with models list (list of model ID strings).
         """
-        import httpx
+        from llm.factory import create_provider
+        from llm.registry import DEFAULT_PROVIDER
 
-        provider = payload.get("provider", "lmstudio")
-        base_url = payload.get("base_url", "").rstrip("/")
-
-        if provider in ("lmstudio", "ollama"):
-            url = base_url or (
-                "http://host.docker.internal:1234/v1" if provider == "lmstudio"
-                else "http://host.docker.internal:11434"
-            )
-            try:
-                models_url = f"{url}/v1/models" if "/v1" not in url else f"{url}/models"
-                async with httpx.AsyncClient(timeout=5.0) as client:
-                    resp = await client.get(models_url)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        model_ids = [m.get("id", "") for m in data.get("data", []) if m.get("id")]
-                        return {"models": model_ids}
-            except Exception as e:
-                logger.warning(f"Failed to list models from {url}: {e}")
-                return {"models": [], "error": str(e)}
-
-        # Cloud providers — return common models
-        if provider == "openai":
-            return {"models": ["gpt-4o-mini", "gpt-4o", "gpt-4", "gpt-3.5-turbo"]}
-        if provider == "anthropic":
-            from llm.anthropic_provider import AnthropicProvider
-            return {"models": [m.id for m in AnthropicProvider.KNOWN_MODELS]}
-
-        return {"models": []}
+        provider_id = payload.get("provider", DEFAULT_PROVIDER)
+        if provider_id == "auto":
+            provider_id = DEFAULT_PROVIDER
+        api_key = payload.get("api_key") or (self.config or {}).get("settings", {}).get("llm_api_key", "")
+        provider = create_provider(
+            provider_id, api_key=api_key or None, base_url=(payload.get("base_url") or "").strip() or None,
+        )
+        if not provider:
+            return {"models": [], "error": f"Unknown provider: {provider_id}"}
+        try:
+            return {"models": [m.id for m in await provider.list_models()]}
+        except Exception as e:
+            logger.warning(f"Failed to list models for {provider_id}: {e}")
+            return {"models": [], "error": str(e)}
 
     async def _detect_local_llm(self) -> None:
         """Try to detect a running local LLM server, or use configured endpoint."""
@@ -671,10 +656,10 @@ class Addin(AddinBase):
         if configured_url:
             endpoints = [configured_url]
         else:
-            endpoints = [
-                "http://host.docker.internal:1234",   # LM Studio (Docker-reachable)
-                "http://host.docker.internal:11434",  # Ollama (Docker-reachable)
-            ]
+            # Each local provider's default address, without the /v1 these
+            # endpoints add themselves
+            from llm.registry import PROVIDER_SPECS
+            endpoints = [spec.default_url.removesuffix("/v1") for spec in PROVIDER_SPECS.values() if spec.local]
 
         for url in endpoints:
             try:

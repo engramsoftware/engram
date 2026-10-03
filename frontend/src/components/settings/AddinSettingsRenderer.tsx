@@ -17,6 +17,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Loader2, RefreshCw } from 'lucide-react'
 import { addinsApi } from '../../services/api'
+import { providerMeta } from '../../utils/providers'
 import {
   ActionButton, ActionRow, ActionStatus, ErrorStatus, InfoNote, PasswordField, SelectField, Switch,
   TextField, UnsavedPill, useAction, useDirty,
@@ -142,11 +143,8 @@ export default function AddinSettingsRenderer({ addinName, disabled = false }: P
 
 // ------------------------------------------------------------------ Provider section
 
-const LOCAL_DEFAULT_URLS: Record<string, string> = {
-  lmstudio: 'http://host.docker.internal:1234',
-  ollama: 'http://host.docker.internal:11434',
-}
-const CLOUD = new Set(['openai', 'anthropic'])
+/** Skill Voyager adds /v1 itself, so its Server URL is the address without it */
+const serverUrlExample = (provider: string) => providerMeta(provider).defaultUrl.replace(/\/v1$/, '')
 
 function ProviderSection({ addinName, section, saved, onSaved }: {
   addinName: string; section: SettingsSection; saved: Values; onSaved: (patch: Values) => void
@@ -170,8 +168,8 @@ function ProviderSection({ addinName, section, saved, onSaved }: {
   const [listState, runList] = useAction()
   useEffect(() => { resetTest() }, [provider, baseUrl, apiKey, model, resetTest])
 
-  const isLocal = provider === 'lmstudio' || provider === 'ollama'
-  const isCloud = CLOUD.has(provider)
+  const isLocal = providerMeta(provider).local
+  const isCloud = providerMeta(provider).needsApiKey
   const dirty = baseUrl !== savedUrl || apiKey !== '' || model !== savedModel
   useDirty(dirty)
 
@@ -214,15 +212,15 @@ function ProviderSection({ addinName, section, saved, onSaved }: {
 
   const handleTest = () => runTest(async () => {
     const result = await addinsApi.action(addinName, 'test_llm', {
-      provider, base_url: baseUrl || LOCAL_DEFAULT_URLS[provider] || '', api_key: apiKey, model,
+      provider, base_url: baseUrl, api_key: apiKey, model,
     })
     if (!result?.success) throw new Error(result?.message || result?.error || 'no response')
     return result
-  }, isCloud ? 'Key format looks right (cloud keys are only format-checked)' : 'Connected', 'Test failed')
+  }, 'Connected', 'Test failed')
 
   const listModels = () => runList(async () => {
     const result = await addinsApi.action(addinName, 'list_models', {
-      provider, base_url: baseUrl || LOCAL_DEFAULT_URLS[provider] || '', api_key: apiKey,
+      provider, base_url: baseUrl, api_key: apiKey,
     })
     setModels(result?.models || [])
   }, 'Model list refreshed', "Couldn't load models")
@@ -254,7 +252,7 @@ function ProviderSection({ addinName, section, saved, onSaved }: {
       )}
 
       {isLocal && (
-        <TextField label="Server URL" value={baseUrl} onChange={setBaseUrl} placeholder={LOCAL_DEFAULT_URLS[provider]}
+        <TextField label="Server URL" value={baseUrl} onChange={setBaseUrl} placeholder={serverUrlExample(provider)}
                    hint="Don't end it with /v1; Engram adds that itself." />
       )}
       {isCloud && (

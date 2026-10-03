@@ -1,3 +1,5 @@
+@import "@fontsource-variable/inter";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -9,20 +11,20 @@
 :root {
   /* Theme colours Tailwind uses are RGB channels so opacity modifiers (bg-x/50) work */
   color-scheme: dark; /* native controls, scrollbars and form widgets follow the theme */
-  --bg-primary: 26 26 26;
-  --bg-secondary: 45 45 45;
-  --bg-tertiary: 23 23 23;
-  --text-primary: 229 229 229;
-  --text-secondary: 163 163 163;
-  --border: 64 64 64;
+  --bg-primary: 24 24 27;
+  --bg-secondary: 39 39 42;
+  --bg-tertiary: 18 18 20;
+  --text-primary: 244 244 245;
+  --text-secondary: 161 161 170;
+  --border: 52 52 56;
   --accent-primary: 99 102 241;
   --accent-hover: 79 70 229;
   /* Accent for text and links: the brand indigo is too dark to read on dark surfaces */
   --accent-text: 165 180 252;
-  --scrollbar-track: #1a1a1a;
-  --scrollbar-thumb: #404040;
-  --scrollbar-hover: #525252;
-  --code-bg: #2d2d2d;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #3f3f46;
+  --scrollbar-hover: #52525b;
+  --code-bg: #27272a;
   /* Markdown accents (text colours, so plain hex) */
   --md-heading-accent: #a5b4fc;
   --md-link: #818cf8;
@@ -32,18 +34,18 @@
 html.light {
   color-scheme: light;
   --bg-primary: 255 255 255;
-  --bg-secondary: 245 245 245;
+  --bg-secondary: 244 244 245;
   --bg-tertiary: 250 250 250;
-  --text-primary: 26 26 26;
+  --text-primary: 24 24 27;
   --text-secondary: 95 102 114; /* >= 5.3:1 on every light surface (#6b7280 was 4.4:1 on bg-secondary) */
-  --border: 229 231 235;
+  --border: 228 228 231;
   --accent-primary: 99 102 241;
   --accent-hover: 79 70 229;
   --accent-text: 67 56 202;
-  --scrollbar-track: #f5f5f5;
-  --scrollbar-thumb: #d1d5db;
-  --scrollbar-hover: #9ca3af;
-  --code-bg: #f3f4f6;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #d4d4d8;
+  --scrollbar-hover: #a1a1aa;
+  --code-bg: #f4f4f5;
   --md-heading-accent: #4338ca;
   --md-link: #4f46e5;
   --md-code: #4338ca;
@@ -51,8 +53,8 @@ html.light {
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
@@ -61,7 +63,9 @@ html.light {
 
 ::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb);
-  border-radius: 4px;
+  border-radius: 9999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -70,16 +74,44 @@ html.light {
 
 /* Base styles */
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+  font-family: 'Inter Variable', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-feature-settings: 'cv11', 'ss01';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  letter-spacing: -0.006em;
   background-color: rgb(var(--bg-primary));
   color: rgb(var(--text-primary));
   margin: 0;
   padding: 0;
 }
 
-/* Smooth transitions for theme switching */
-* {
-  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+/* Quick, quiet feedback on things you can interact with. (This used to be `*`, which
+   faded every element on every state change and made the whole UI feel sluggish.) */
+button, a, input, textarea, select, summary, [role="button"], [role="radio"] {
+  transition: background-color 0.12s ease, border-color 0.12s ease, color 0.12s ease, box-shadow 0.12s ease;
+}
+
+/* Typing indicator: three dots that fade in turn (replaces the bouncing dots) */
+@keyframes typing-fade {
+  0%, 80%, 100% { opacity: 0.25; }
+  40% { opacity: 1; }
+}
+.typing-dot {
+  width: 6px; height: 6px; border-radius: 9999px;
+  background: rgb(var(--text-secondary));
+  animation: typing-fade 1.2s infinite ease-in-out;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.15s; }
+.typing-dot:nth-child(3) { animation-delay: 0.3s; }
+
+/* People who ask their OS for less motion get none: no spin-in-place, no fades, no slides */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* Prevent iOS auto-zoom on input focus — inputs must be >= 16px */
@@ -106,7 +138,7 @@ body {
 /* Code block styling */
 pre {
   background-color: var(--code-bg) !important;
-  border-radius: 8px;
+  border-radius: 12px;
   padding: 1rem;
   overflow-x: auto;
 }
@@ -130,7 +162,7 @@ code {
   font-weight: 600; line-height: 1.3; margin: 1.5rem 0 0.75rem; color: rgb(var(--text-primary));
 }
 .md-content h1 { font-size: 1.25em; padding-bottom: 0.5rem; border-bottom: 1px solid rgb(var(--border)); }
-.md-content h2 { font-size: 1.125em; color: var(--md-heading-accent); }
+.md-content h2 { font-size: 1.125em; }
 .md-content h3 { font-size: 1em; }
 .md-content h4 { font-size: 0.95em; }
 .md-content ul, .md-content ol { margin: 0.75rem 0; padding-left: 1.5rem; }
@@ -161,7 +193,11 @@ code {
   border-collapse: collapse; margin: 0.75rem 0; font-size: 0.9em;
 }
 .md-content th, .md-content td {
-  border: 1px solid rgb(var(--border)); padding: 0.5rem 0.75rem; text-align: left; vertical-align: top;
+  border-bottom: 1px solid rgb(var(--border)); padding: 0.5rem 0.75rem; text-align: left; vertical-align: top;
 }
-.md-content th { background: rgb(var(--bg-secondary)); font-weight: 600; }
+.md-content th {
+  font-weight: 500; font-size: 0.85em; color: rgb(var(--text-secondary));
+  border-bottom-color: rgb(var(--text-secondary) / 0.4);
+}
+.md-content tr:last-child td { border-bottom: 0; }
 .md-content img { max-width: 100%; }

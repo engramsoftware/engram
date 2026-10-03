@@ -13,7 +13,7 @@ import { useState, useEffect, useId, useRef } from 'react'
 import { RefreshCw } from 'lucide-react'
 import { settingsApi } from '../../services/api'
 import { friendlyModelName } from '../../utils/modelNames'
-import { providerMeta } from '../../utils/providers'
+import { providerMeta, providerReady } from '../../utils/providers'
 import type { LLMSettings, ProviderConfig } from '../../types/chat.types'
 import {
   ActionButton, ActionRow, ActionStatus, Disclosure, ErrorStatus, InfoNote, PasswordField, StatusPill,
@@ -88,13 +88,19 @@ export default function ProviderSettings({
   const dirty = apiKey !== '' || baseUrl !== savedUrl
   useDirty(dirty)
 
-  const hasKey = !meta.needsApiKey || !!config?.api_key_set
+  // What's still missing before this provider can answer. Typed values count
+  // (they are saved with the switch), so only the saved key/URL are checked
+  // when nothing was typed.
+  const hasKey = !meta.needsApiKey || !!config?.api_key_set || !!apiKey
+  const hasUrl = !meta.requiresUrl || baseUrl.trim() !== ''
+  const missing = !hasKey ? 'an API key' : !hasUrl ? 'a server URL' : ''
+  const savedReady = providerReady(provider, config)
   const defaultModel = settings.default_provider === provider ? settings.default_model : undefined
 
   // Radio: switch now, or (no key yet) open the row and ask for one first
   const select = () => {
     if (inUse || selecting.current) return
-    if (!hasKey && !apiKey) {
+    if (missing) {
       // Focus stays on the radio; the opened row says what is needed (announced as a status)
       onPendingChange(true)
       setIsOpen(true)
@@ -149,11 +155,13 @@ export default function ProviderSettings({
     onUpdate()
   }, inUse ? `New chats use ${friendlyModelName(model)}` : `Now using ${meta.name} · ${friendlyModelName(model)}`)
 
-  const status: CardStatus = inUse ? (hasKey ? 'in-use' : 'needs-setup') : pending ? 'needs-setup' : 'off'
-  const keyStatus = !meta.needsApiKey
-    ? 'On this computer'
-    : config?.api_key_set ? `Key saved · ${config.api_key_masked ?? ''}` : 'Needs an API key'
-  const saveBlocked = pending && !apiKey && !hasKey
+  const status: CardStatus = inUse ? (savedReady ? 'in-use' : 'needs-setup') : pending ? 'needs-setup' : 'off'
+  const keyStatus = meta.needsApiKey
+    ? (config?.api_key_set ? `Key saved · ${config.api_key_masked ?? ''}` : 'Needs an API key')
+    : meta.requiresUrl
+      ? (savedUrl ? `Server · ${savedUrl}` : 'Needs a server URL')
+      : 'On this computer'
+  const saveBlocked = pending && !!missing
 
   return (
     <div className={`rounded-lg border transition-colors ${
@@ -188,11 +196,11 @@ export default function ProviderSettings({
           type="button"
           onClick={() => setIsOpen(!isOpen)}
           aria-expanded={isOpen}
-          aria-label={`${hasKey ? 'Edit' : 'Set up'} ${meta.name}`}
+          aria-label={`${savedReady ? 'Edit' : 'Set up'} ${meta.name}`}
           className="flex-shrink-0 px-2 py-1.5 min-h-[40px] sm:min-h-0 rounded text-xs text-dark-accent-text hover:underline
                      focus:outline-none focus-visible:ring-2 focus-visible:ring-dark-accent-primary"
         >
-          {hasKey ? 'Edit' : 'Set up'} {isOpen ? '▾' : '›'}
+          {savedReady ? 'Edit' : 'Set up'} {isOpen ? '▾' : '›'}
         </button>
       </div>
       <div className="px-4"><ErrorStatus state={selectState} /></div>
@@ -201,14 +209,14 @@ export default function ProviderSettings({
         <div className="px-4 pb-4 pt-3 space-y-3 border-t border-dark-border/40">
           <div role="status">
             {pending && (
-              <InfoNote>{meta.name} needs an API key first. Add it below, then Save to start using {meta.name}.</InfoNote>
+              <InfoNote>{meta.name} needs {missing || 'more setup'} first. Add it below, then Save to start using {meta.name}.</InfoNote>
             )}
           </div>
 
-          {meta.needsApiKey && (
+          {meta.acceptsApiKey && (
             <PasswordField
               ref={keyRef}
-              label="API key"
+              label={meta.needsApiKey ? 'API key' : 'API key (optional)'}
               value={apiKey}
               onChange={setApiKey}
               placeholder={config?.api_key_set ? 'Paste a new key to replace it' : meta.keyPlaceholder}
@@ -225,8 +233,11 @@ export default function ProviderSettings({
                          hint="Only change this for a proxy or a compatible service." />
             </Disclosure>
           ) : (
-            <TextField label="Server URL" type="url" value={baseUrl} onChange={setBaseUrl} placeholder={meta.defaultUrl}
-                       hint={`Leave empty for the default (${meta.defaultUrl}).`} />
+            <TextField label="Server URL" type="url" value={baseUrl} onChange={setBaseUrl}
+                       placeholder={meta.defaultUrl || meta.urlExample}
+                       hint={meta.requiresUrl
+                         ? 'Where the server listens. A bare address like http://localhost:8080 gets /v1 added.'
+                         : `Leave empty for the default (${meta.defaultUrl}).`} />
           )}
 
           {/* Models */}
@@ -249,7 +260,7 @@ export default function ProviderSettings({
               <>
                 {!inUse && (
                   <p className="text-[11px] text-dark-text-secondary mb-1">
-                    {hasKey ? `Pick a model to switch to ${meta.name} with it.` : `Save a key first to use ${meta.name}.`}
+                    {!missing ? `Pick a model to switch to ${meta.name} with it.` : `Add ${missing} first to use ${meta.name}.`}
                   </p>
                 )}
                 <div className="flex flex-wrap gap-1 max-h-40 overflow-y-auto" role="group" aria-label={`${meta.name} models`}>
@@ -260,7 +271,7 @@ export default function ProviderSettings({
                         key={m}
                         type="button"
                         onClick={() => pickModel(m)}
-                        disabled={modelState.status === 'busy' || (!inUse && !hasKey && !apiKey)}
+                        disabled={modelState.status === 'busy' || (!inUse && !!missing)}
                         aria-pressed={isDefault}
                         title={m}
                         className={`text-[11px] px-2 py-1.5 sm:py-1 rounded border transition-colors
@@ -278,7 +289,11 @@ export default function ProviderSettings({
               </>
             ) : (
               <p className="text-xs text-dark-text-secondary italic">
-                {meta.needsApiKey ? 'No models yet. Save your key, then press Refresh.' : 'No models yet. Start the app, then press Refresh.'}
+                {meta.needsApiKey
+                  ? 'No models yet. Save your key, then press Refresh.'
+                  : meta.requiresUrl
+                    ? 'No models yet. Save the server URL, then press Refresh.'
+                    : 'No models yet. Start the app, then press Refresh.'}
               </p>
             )}
             <ActionStatus state={modelState} />

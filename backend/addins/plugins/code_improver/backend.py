@@ -334,7 +334,7 @@ class CodeImproverAddin(InterceptorAddin):
             try:
                 # Create node
                 node = GraphNode(
-                    label=NodeType.Entity,
+                    label=NodeType.ENTITY,
                     name=entity.name,
                     node_type=entity.entity_type.value,
                     properties={

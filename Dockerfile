@@ -50,8 +50,9 @@ COPY mcp_server.py /app/mcp_server.py
 # Copy license and entrypoint
 COPY LICENSE /app/LICENSE
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
-# Fix Windows CRLF line endings (no such file or directory when shebang has \r)
-RUN sed -i 's/\r$//' /app/docker-entrypoint.sh
+# Fix Windows CRLF line endings: a shebang with \r fails ("no such file or directory"),
+# and .env.example (copied to /app/.env on first start) would put \r into every value
+RUN sed -i 's/\r$//' /app/docker-entrypoint.sh /app/.env.example
 RUN chmod +x /app/docker-entrypoint.sh
 
 # Data directory — mount a volume here for persistence

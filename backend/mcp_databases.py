@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 # Database paths - centralized under data/mcp/
 from config import MCP_DATA_DIR, MCP_USER_INTERACTIONS_DB, MCP_AI_REASONING_DB
+from mcp_knowledge_db import top_keywords
 USER_DB_PATH = MCP_USER_INTERACTIONS_DB
 AI_DB_PATH = MCP_AI_REASONING_DB
 
@@ -52,6 +53,12 @@ class SearchMode(str, Enum):
 # =============================================================================
 # DATABASE 2: User Interactions
 # =============================================================================
+
+# Rows the MCP server used to auto-log for every tool call ("Tool: name(args)").
+# They are not user requests, and they can hold code or secrets from tool
+# arguments, so searches skip them.
+NOT_TOOL_CALL = "COALESCE(message_type, '') != 'tool_call'"
+
 
 class UserInteractionsDB:
     """
@@ -169,7 +176,7 @@ class UserInteractionsDB:
             complexity = "medium"
         
         return {
-            "keywords": list(set(keywords))[:30],
+            "keywords": top_keywords(keywords, 30),
             "technologies": technologies,
             "error_messages": error_patterns,
             "problem_type": problem_type,
@@ -267,14 +274,14 @@ class UserInteractionsDB:
                 rows = conn.execute("""
                     SELECT i.* FROM interactions i
                     JOIN interactions_fts fts ON i.id = fts.id
-                    WHERE interactions_fts MATCH ?
+                    WHERE interactions_fts MATCH ? AND COALESCE(i.message_type, '') != 'tool_call'
                     ORDER BY rank
                     LIMIT ?
                 """, (query, limit)).fetchall()
             
             else:
                 # Build dynamic query
-                conditions = []
+                conditions = [NOT_TOOL_CALL]
                 params = []
                 
                 if query:
@@ -507,7 +514,7 @@ class AIReasoningDB:
         all_text = f"{task_context} {thought_process} {decision} {approach_summary}"
         stop_words = {'the', 'a', 'an', 'is', 'are', 'to', 'of', 'in', 'for', 'on', 'with', 'and', 'but', 'or', 'i'}
         words = re.findall(r'\b[a-zA-Z]{4,}\b', all_text.lower())
-        keywords = list(set(w for w in words if w not in stop_words))[:30]
+        keywords = top_keywords([w for w in words if w not in stop_words], 30)
         
         patterns = self._extract_patterns(thought_process, decision)
         

@@ -15,11 +15,25 @@ from typing import List, Dict, Optional, Any
 from datetime import datetime
 from contextlib import contextmanager
 import hashlib
+from collections import Counter
 
 logger = logging.getLogger(__name__)
 
 # Database path - centralized under data/mcp/
 from config import MCP_KNOWLEDGE_DB
+
+
+def top_keywords(words: List[str], limit: int) -> List[str]:
+    """The `limit` most frequent words, ties in order of first appearance.
+
+    Deterministic, unlike slicing a set: set order depends on the per-process hash
+    seed, so the same text used to keep a different subset of keywords each run
+    (and searches for a dropped word missed the record).
+    """
+    counts = Counter(words)
+    return [w for w, _ in sorted(counts.items(), key=lambda kv: -kv[1])][:limit]
+
+
 DB_PATH = MCP_KNOWLEDGE_DB
 
 
@@ -286,11 +300,11 @@ class MCPKnowledgeDB:
             scored.sort(key=lambda x: -x['match_score'])
             return scored[:limit]
     
-    def update_skill_usage(self, skill_id: str, successful: bool) -> dict:
-        """Update skill usage statistics."""
+    def update_skill_usage(self, skill_id: str, successful: bool) -> bool:
+        """Update skill usage statistics. False when no skill has that id."""
         with self._get_conn() as conn:
             if successful:
-                conn.execute("""
+                cur = conn.execute("""
                     UPDATE skills SET 
                         times_used = times_used + 1,
                         successes = successes + 1,
@@ -299,7 +313,7 @@ class MCPKnowledgeDB:
                     WHERE id = ?
                 """, (datetime.utcnow().isoformat(), skill_id))
             else:
-                conn.execute("""
+                cur = conn.execute("""
                     UPDATE skills SET 
                         times_used = times_used + 1,
                         failures = failures + 1,
@@ -307,7 +321,21 @@ class MCPKnowledgeDB:
                         updated_at = ?
                     WHERE id = ?
                 """, (datetime.utcnow().isoformat(), skill_id))
+            return cur.rowcount > 0
     
+    def update_solution_usage(self, solution_id: str, successful: bool) -> bool:
+        """Count a successful reuse of a stored solution. False when no solution has that id.
+
+        The solutions table only tracks successes, so a failed reuse changes nothing
+        (but still confirms the id exists).
+        """
+        with self._get_conn() as conn:
+            if successful:
+                cur = conn.execute(
+                    "UPDATE solutions SET success_count = success_count + 1 WHERE id = ?", (solution_id,))
+                return cur.rowcount > 0
+            return conn.execute("SELECT 1 FROM solutions WHERE id = ?", (solution_id,)).fetchone() is not None
+
     # ==================== SESSIONS ====================
     
     def create_session(self, session: Dict[str, Any]) -> str:
@@ -767,11 +795,11 @@ class MCPKnowledgeDB:
             scored.sort(key=lambda x: -x['match_score'])
             return scored[:limit]
     
-    def update_playbook_usage(self, playbook_id: str, successful: bool) -> dict:
-        """Update playbook usage statistics."""
+    def update_playbook_usage(self, playbook_id: str, successful: bool) -> bool:
+        """Update playbook usage statistics. False when no playbook has that id."""
         with self._get_conn() as conn:
             if successful:
-                conn.execute("""
+                cur = conn.execute("""
                     UPDATE playbooks SET 
                         times_used = times_used + 1,
                         success_count = success_count + 1,
@@ -780,7 +808,7 @@ class MCPKnowledgeDB:
                     WHERE id = ?
                 """, (datetime.utcnow().isoformat(), playbook_id))
             else:
-                conn.execute("""
+                cur = conn.execute("""
                     UPDATE playbooks SET 
                         times_used = times_used + 1,
                         failure_count = failure_count + 1,
@@ -788,6 +816,7 @@ class MCPKnowledgeDB:
                         updated_at = ?
                     WHERE id = ?
                 """, (datetime.utcnow().isoformat(), playbook_id))
+            return cur.rowcount > 0
     
     def get_playbook(self, playbook_id: str) -> Optional[Dict]:
         """Get a playbook by ID."""
@@ -827,7 +856,7 @@ class MCPKnowledgeDB:
         
         words = re.findall(r'\b[a-zA-Z]{3,}\b', text.lower())
         keywords = [w for w in words if w not in stop_words]
-        return list(set(keywords))[:20]
+        return top_keywords(keywords, 20)
     
     def get_stats(self) -> Dict[str, Any]:
         """Get database statistics."""

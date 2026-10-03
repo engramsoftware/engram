@@ -65,10 +65,11 @@ docker compose logs -f   # view logs
 ### Uninstall
 
 ```bash
-docker compose down -v   # stop and delete all data
+docker compose down -v   # remove the container and the model cache volume
+sudo rm -rf ./data       # delete all data: users, chats, settings, secrets (files are root-owned on Linux)
 ```
 
-Or keep your data and just remove the container: `docker compose down` (data persists in the Docker volume).
+Skip the `rm` to keep your data: it lives in the `./data` folder next to `docker-compose.yml`.
 
 ### Troubleshooting
 
@@ -195,6 +196,9 @@ Connect to any LLM provider and switch models mid-conversation. Configure provid
 | **Anthropic** (Claude 3.5 Sonnet, Haiku, etc.) | Per-token | API key from [console.anthropic.com](https://console.anthropic.com) |
 | **LM Studio** | Free, runs locally | Download from [lmstudio.ai](https://lmstudio.ai), start server |
 | **Ollama** | Free, runs locally | Download from [ollama.com](https://ollama.com), run `ollama serve` |
+| **Custom (OpenAI-compatible)** | Depends on the server | Any server that speaks the OpenAI API: llama.cpp (`llama-server`), vLLM, Groq, Together, OpenRouter. Settings → Models → Custom, enter the server URL (and a key if it needs one) |
+
+Running Llama? Use Ollama (`ollama pull llama3.1`), LM Studio, or `llama-server` through the Custom provider.
 
 ### Autonomous Memory
 
@@ -342,17 +346,22 @@ LLM provider API keys are configured through the **Settings** tab in the app. Th
 
 ### Environment Variables
 
-You can set environment variables in `docker-compose.yml` or mount a `.env` file. See `backend/.env.example` for all options.
+You can set environment variables in `docker-compose.yml` or mount a `.env` file read-only (`./backend/.env:/app/.env:ro`). See `backend/.env.example` for all options.
 
-### Local LLM Providers (LM Studio, Ollama)
+### Local LLM Providers (LM Studio, Ollama, llama.cpp)
 
-If you run LM Studio or Ollama on your host machine, use `host.docker.internal` as the hostname so the Docker container can reach them:
+If you run LM Studio, Ollama or `llama-server` on your host machine, use `host.docker.internal` as the hostname so the Docker container can reach them:
 
 ```yaml
 environment:
   - LMSTUDIO_BASE_URL=http://host.docker.internal:1234/v1
   - OLLAMA_BASE_URL=http://host.docker.internal:11434
+  - CUSTOM_BASE_URL=http://host.docker.internal:8080/v1   # llama.cpp, vLLM, ...
 ```
+
+A bare address (`http://host:1234`) gets `/v1` added where the API needs it. These are only fallbacks; whatever you save in Settings → Models wins.
+
+Adding a provider in code: add a spec to `backend/llm/registry.py`, a class in `backend/llm/`, map it in `backend/llm/factory.py`, and add its row to `frontend/src/utils/providers.ts` (`backend/tests/test_llm_registry.py` fails if they disagree).
 
 ### Optional Services
 
@@ -379,11 +388,12 @@ Without any optional services, Engram still works with any LLM provider you conf
 
 If you use only local LLM providers (LM Studio, Ollama) and skip Neo4j, **nothing leaves your machine** except web search queries.
 
-All user data lives in a Docker volume (`engram-data`) mapped to `/data` inside the container:
+All user data lives in the `./data` folder, mounted at `/data` inside the container:
 
 ```
 /data/
 +-- app.db              # SQLite database (users, conversations, messages, settings)
++-- secrets.env         # Generated login and API-key encryption secrets (keep it with app.db)
 +-- chroma/             # Vector embeddings (memories, messages, documents)
 +-- mcp/                # MCP server databases (knowledge, interactions, reasoning)
 +-- learning/           # Skill transfer and adaptive retrieval data
@@ -392,7 +402,17 @@ All user data lives in a Docker volume (`engram-data`) mapped to `/data` inside 
 +-- logs/               # Service logs
 ```
 
-**To reset everything:** `docker compose down -v` removes the container and all data.
+**To reset everything:** `docker compose down`, then delete the `./data` folder (`sudo rm -rf ./data` on Linux).
+
+**Secrets:** on first start Engram generates a login secret and the key that encrypts your saved API keys, and keeps them in `data/secrets.env`, so they survive rebuilds. Back it up with `app.db`: without it, saved API keys can't be decrypted. Setting `JWT_SECRET_KEY` / `ENCRYPTION_KEY` in the environment overrides it.
+
+**Upgrading from a version that kept secrets inside the container** (before `data/secrets.env` existed): those secrets exist only in the current container, so save them while it still exists: before `docker compose down`, `up --build` or any other step that replaces it (`docker start engram` first if it is stopped). Otherwise everyone is logged out and saved API keys must be re-entered.
+
+```bash
+docker exec engram sh -c "umask 077; grep -E '^(JWT_SECRET_KEY|ENCRYPTION_KEY)=' /app/.env | grep -v '=change-me' > /data/secrets.env"
+```
+
+If you set `JWT_SECRET_KEY` / `ENCRYPTION_KEY` as environment variables, nothing changes: keep them set.
 
 **To back up data:** `docker cp engram:/data ./backup`
 

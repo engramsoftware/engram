@@ -14,12 +14,9 @@ from datetime import datetime
 
 from memory.types import Memory, UpdateAction, ConflictResolution
 from llm.factory import create_provider
-from llm.anthropic_provider import ANTHROPIC_FAST_MODEL
-from config import get_settings
+from llm.registry import default_model
 
 logger = logging.getLogger(__name__)
-
-settings = get_settings()
 
 
 # Conflict resolution prompt
@@ -104,21 +101,11 @@ class ConflictResolver:
         Falls back to .env config values only when nothing is passed.
         """
         try:
-            # Fall back to .env values only if caller didn't provide credentials
-            if api_key is None and base_url is None:
-                if self.provider_name == "openai":
-                    api_key = settings.openai_api_key
-                elif self.provider_name == "anthropic":
-                    api_key = settings.anthropic_api_key
-                elif self.provider_name == "lmstudio":
-                    base_url = settings.lmstudio_base_url or "http://host.docker.internal:1234/v1"
-                elif self.provider_name == "ollama":
-                    base_url = settings.ollama_base_url or "http://host.docker.internal:11434"
-            
             self.provider = create_provider(
                 self.provider_name,
                 api_key=api_key,
-                base_url=base_url
+                base_url=base_url,
+                use_env_fallback=True,
             )
             
             if self.provider:
@@ -268,13 +255,7 @@ class ConflictResolver:
     
     def _get_default_model(self) -> str:
         """Get default model name for the provider."""
-        defaults = {
-            "openai": "gpt-4o-mini",
-            "anthropic": ANTHROPIC_FAST_MODEL,
-            "lmstudio": "local-model",
-            "ollama": "llama2"
-        }
-        return defaults.get(self.provider_name, "gpt-4o-mini")
+        return default_model(self.provider_name, background=True) or "gpt-4o-mini"
 
 
 # Module-level singleton for easy access

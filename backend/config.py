@@ -66,21 +66,24 @@ class Settings(BaseSettings):
     encryption_key: str = "your-32-byte-encryption-key-here"
     
     # ============================================================
-    # LLM Provider Defaults
+    # LLM Provider Overrides (.env)
     # ============================================================
-    # OpenAI
+    # Used only when the user hasn't saved a value in Settings > Models.
+    # Leave a URL unset to use the provider's default address
+    # (see backend/llm/registry.py, the single list of providers).
     openai_api_key: Optional[str] = None
-    openai_base_url: str = "https://api.openai.com/v1"
-    
-    # Anthropic
+    openai_base_url: Optional[str] = None
+
     anthropic_api_key: Optional[str] = None
-    anthropic_base_url: str = "https://api.anthropic.com"
-    
-    # LM Studio (local)
-    lmstudio_base_url: str = "http://host.docker.internal:1234/v1"
-    
-    # Ollama (local)
-    ollama_base_url: str = "http://host.docker.internal:11434"
+    anthropic_base_url: Optional[str] = None
+
+    # LM Studio and Ollama (local; no key)
+    lmstudio_base_url: Optional[str] = None
+    ollama_base_url: Optional[str] = None
+
+    # Custom OpenAI-compatible server (llama.cpp, vLLM, Groq, ...). No default URL.
+    custom_base_url: Optional[str] = None
+    custom_api_key: Optional[str] = None
     
     
     # ============================================================

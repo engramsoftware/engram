@@ -16,6 +16,7 @@ import asyncio
 import json
 import sys
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 # Model capability tiers - used to auto-detect if a model is "smart" or "weak"
@@ -66,12 +67,10 @@ try:
     from mcp.server.stdio import stdio_server
     from mcp.types import Tool, TextContent
 except ImportError:
-    print("Installing MCP SDK...")
-    import subprocess
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "mcp"])
-    from mcp.server import Server
-    from mcp.server.stdio import stdio_server
-    from mcp.types import Tool, TextContent
+    # Never install at runtime: pip writes to stdout, which is the JSON-RPC channel,
+    # and an unpinned install ignores requirements.txt's mcp<2.
+    sys.stderr.write("The MCP SDK is missing. Install it with: pip install 'mcp>=1.26.0,<2'\n")
+    sys.exit(1)
 
 # Add backend to path
 import os
@@ -88,7 +87,6 @@ server = Server("chatapp-coding-enhancer")
 _code_extractor = None
 _adaptive_retrieval = None
 _graph_store = None
-_memory_store = None
 _skill_store = None
 _session_manager = None
 _reflection_system = None
@@ -127,18 +125,6 @@ def get_graph_store():
         except Exception as e:
             logger.warning(f"Graph store not available: {e}")
     return _graph_store
-
-
-def get_memory_store():
-    """Get memory store if configured."""
-    global _memory_store
-    if _memory_store is None:
-        try:
-            from memory.memory_store import MemoryStore
-            _memory_store = MemoryStore()
-        except Exception as e:
-            logger.warning(f"Memory store not available: {e}")
-    return _memory_store
 
 
 def get_skill_store():
@@ -259,18 +245,13 @@ async def list_tools() -> List[Tool]:
         ),
         Tool(
             name="search_memories",
-            description="Search past memories for relevant context. Requires ChromaDB to be configured.",
+            description="Search memories saved with store_memory (keyword match in the MCP knowledge base).",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "query": {
                         "type": "string",
                         "description": "Search query"
-                    },
-                    "user_id": {
-                        "type": "string",
-                        "description": "User ID for filtering (default: 'windsurf')",
-                        "default": "windsurf"
                     },
                     "limit": {
                         "type": "integer",
@@ -311,11 +292,6 @@ async def list_tools() -> List[Tool]:
                         "description": "Type of memory",
                         "enum": ["fact", "preference", "decision", "experience", "negative"],
                         "default": "fact"
-                    },
-                    "user_id": {
-                        "type": "string",
-                        "description": "User ID (default: 'windsurf')",
-                        "default": "windsurf"
                     },
                     "tags": {
                         "type": "array",
@@ -974,50 +950,22 @@ async def list_tools() -> List[Tool]:
 async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
     """Handle tool calls from Windsurf."""
     
-    # Track context for auto-injection
+    # Related context, returned only by find_skill
     auto_context = None
     
     try:
-        # AUTO-LOG: Store every tool call as a user interaction (except meta tools)
-        meta_tools = ("get_mcp_guide", "get_db_stats", "store_user_interaction", "store_ai_reasoning", 
-                      "search_all_context", "search_past_reasoning", "search_user_history")
-        
-        if name not in meta_tools:
+        # Tool calls are not logged into the "user interactions" history any more: those
+        # rows came back as "similar past requests", and they kept every call's arguments
+        # (often code, sometimes secrets) forever. store_user_interaction still records
+        # what an editor chooses to record.
+        if name == "find_skill" and arguments.get("query"):
             try:
-                from mcp_databases import get_user_interactions_db
-                user_db = get_user_interactions_db()
-                
-                # Build interaction message from tool call
-                arg_summary = ", ".join(f"{k}={str(v)[:50]}" for k, v in arguments.items())
-                interaction_msg = f"Tool: {name}({arg_summary})"
-                
-                # Extract technologies from arguments
-                technologies = arguments.get("technologies", [])
-                query_text = arguments.get("query", "") or arguments.get("task_description", "") or arguments.get("problem", "")
-                
-                if not technologies and query_text:
-                    tech_patterns = ['python', 'javascript', 'typescript', 'react', 'fastapi', 'mongodb', 'sqlite', 'vue', 'angular', 'node', 'express', 'django', 'flask']
-                    technologies = [t for t in tech_patterns if t in query_text.lower()]
-                
-                user_db.add_interaction(
-                    user_message=interaction_msg,
-                    message_type="tool_call",
-                    technologies=technologies
-                )
-                
-                # AUTO-CONTEXT: Inject relevant context for problem-solving tools
-                problem_tools = ("find_skill", "create_skill", "record_outcome", "generate_skill_from_outcome", 
-                                 "store_solution", "create_session")
-                if name in problem_tools and query_text:
-                    try:
-                        from mcp_databases import get_unified_search
-                        search = get_unified_search()
-                        auto_context = search.find_relevant_context(query_text, max_items=3)
-                    except Exception:
-                        pass
-                        
+                from mcp_databases import get_unified_search
+                auto_context = get_unified_search().find_relevant_context(arguments["query"])
+                if auto_context == "No relevant context found.":
+                    auto_context = None
             except Exception as e:
-                logger.debug(f"Auto-log failed: {e}")
+                logger.warning(f"Related context for find_skill failed: {e}")
         
         # GUIDE - Help dumb models understand how to use this MCP
         if name == "get_mcp_guide":
@@ -1067,7 +1015,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                         "store_solution - Save problem->solution pair",
                         "store_memory - Save facts/context",
                         "store_ai_reasoning - Save HOW you approached a problem",
-                        "store_user_interaction - Save user request (AUTO-CALLED)",
+                        "store_user_interaction - Save a user request worth remembering",
                         "store_code_entity - Save code patterns",
                         "link_entities - Create relationships"
                     ],
@@ -1103,7 +1051,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 },
                 "databases": {
                     "1_knowledge": "data/mcp_knowledge.db - Skills, solutions, memories, playbooks",
-                    "2_user_interactions": "data/user_interactions.db - User requests (auto-logged)",
+                    "2_user_interactions": "data/user_interactions.db - User requests saved with store_user_interaction",
                     "3_ai_reasoning": "data/ai_reasoning.db - AI thought patterns"
                 },
                 "common_workflows": {
@@ -1131,7 +1079,6 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     ]
                 },
                 "auto_features": [
-                    "User interactions are AUTO-LOGGED on every tool call",
                     "Skills auto-generate after 3+ similar successful outcomes",
                     "Playbooks auto-generate from successful record_outcome calls",
                     "Sessions auto-checkpoint every 5 minutes",
@@ -1219,51 +1166,23 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             return [TextContent(type="text", text="No matching solutions found in knowledge base.")]
         
         elif name == "search_memories":
-            # Try ChromaDB first, fallback to SQLite
-            memory = get_memory_store()
-            if memory and memory.is_available:
-                query = arguments.get("query", "")
-                user_id = arguments.get("user_id", "windsurf")
-                limit = arguments.get("limit", 5)
-                memories = memory.search(query, user_id, limit=limit)
-            else:
-                # Fallback to SQLite database
-                from mcp_knowledge_db import get_mcp_knowledge_db
-                db = get_mcp_knowledge_db()
-                query = arguments.get("query", "")
-                limit = arguments.get("limit", 5)
-                
-                memories = db.search_memories(query, limit=limit)
-                
-                # SQLite returns dicts
-                result = {
-                    "memories": [
-                        {
-                            "content": m.get("content", "") if isinstance(m, dict) else m.content,
-                            "type": m.get("memory_type", "unknown") if isinstance(m, dict) else getattr(m, 'memory_type', "unknown"),
-                            "match_score": m.get("match_score", 0.8) if isinstance(m, dict) else 0.8
-                        }
-                        for m in memories
-                    ],
-                    "count": len(memories),
-                    "source": "sqlite"
-                }
-                return [TextContent(type="text", text=json.dumps(result, indent=2))]
-            
-            # ChromaDB returns objects
+            # The chat's memory store needs the app database, which this process does not
+            # open, so MCP memories live in the MCP knowledge DB.
+            from mcp_knowledge_db import get_mcp_knowledge_db
+            db = get_mcp_knowledge_db()
+            memories = db.search_memories(arguments.get("query", ""), limit=arguments.get("limit", 5))
             result = {
                 "memories": [
                     {
-                        "content": m.content,
-                        "type": m.memory_type if hasattr(m, 'memory_type') else "unknown",
-                        "confidence": m.confidence if hasattr(m, 'confidence') else 0.8
+                        "content": m.get("content", ""),
+                        "type": m.get("memory_type", "unknown"),
+                        "match_score": m.get("match_score", 0.8),
                     }
                     for m in memories
                 ],
                 "count": len(memories),
-                "source": "chromadb"
+                "source": "mcp-sqlite"
             }
-            
             return [TextContent(type="text", text=json.dumps(result, indent=2))]
         
         elif name == "get_retrieval_strategy":
@@ -1286,73 +1205,18 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         elif name == "store_memory":
             content = arguments.get("content", "")
             memory_type = arguments.get("memory_type", "fact")
-            user_id = arguments.get("user_id", "windsurf")
             tags = arguments.get("tags", [])
             
-            # Try evolved memory first, fall back to basic
-            try:
-                from memory.memory_evolution import MemoryEvolution
-                from memory.memory_store import MemoryStore
-                
-                memory_store = get_memory_store()
-                if not (memory_store and memory_store.is_available):
-                    # MemoryEvolution skips the write without error when the store is
-                    # unavailable, which reported success while persisting nothing.
-                    raise RuntimeError("memory store unavailable")
-                evolution = MemoryEvolution(memory_store)
-                
-                note = await evolution.add_memory(
-                    content=content,
-                    user_id=user_id,
-                    source_conversation_id="windsurf-session"
-                )
-                
-                return [TextContent(type="text", text=json.dumps({
-                    "success": True,
-                    "memory_id": note.id,
-                    "keywords": note.keywords,
-                    "linked_to": len(note.linked_memories),
-                    "message": "Memory stored with evolution and linking"
-                }, indent=2))]
-                
-            except Exception as e:
-                logger.warning(f"Evolved memory failed, trying basic: {e}")
-                
-                # Fallback to basic memory store
-                memory = get_memory_store()
-                if memory and memory.is_available:
-                    from memory.types import Memory, MemoryType
-                    from bson import ObjectId
-                    
-                    # Validate memory_type against actual enum values
-                    valid_types = {"fact", "preference", "decision", "experience", "negative"}
-                    mem = Memory(
-                        id=str(ObjectId()),
-                        content=content,
-                        memory_type=MemoryType(memory_type) if memory_type in valid_types else MemoryType.FACT,
-                        user_id=user_id,
-                        source_conversation_id="windsurf-session",
-                    )
-                    await memory.add(mem)
-                    
-                    return [TextContent(type="text", text=json.dumps({
-                        "success": True,
-                        "memory_id": mem.id,
-                        "message": "Memory stored (basic mode)"
-                    }, indent=2))]
-                else:
-                    # Fallback to SQLite
-                    from mcp_knowledge_db import get_mcp_knowledge_db
-                    db = get_mcp_knowledge_db()
-                    
-                    mem_id = db.store_memory(content, memory_type, tags)
-                    
-                    return [TextContent(type="text", text=json.dumps({
-                        "success": True,
-                        "memory_id": mem_id,
-                        "message": "Memory stored in SQLite knowledge base",
-                        "source": "sqlite"
-                    }, indent=2))]
+            # See search_memories: MCP memories live in the MCP knowledge DB
+            from mcp_knowledge_db import get_mcp_knowledge_db
+            mem_id = get_mcp_knowledge_db().store_memory(content, memory_type, tags)
+            
+            return [TextContent(type="text", text=json.dumps({
+                "success": True,
+                "memory_id": mem_id,
+                "message": "Memory stored in the MCP knowledge base",
+                "source": "mcp-sqlite"
+            }, indent=2))]
         
         elif name == "store_code_entity":
             graph = get_graph_store()
@@ -1385,13 +1249,13 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             user_id = arguments.get("user_id", "windsurf")
             
             graph_stored = False
+            links_created = 0
             try:
                 from knowledge_graph.types import GraphNode, NodeType
-                from datetime import datetime
                 
                 # Create node in Neo4j
                 node = GraphNode(
-                    label=NodeType.Entity,
+                    label=NodeType.ENTITY,
                     name=name_val,
                     node_type=entity_type,
                     properties={
@@ -1403,19 +1267,20 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     last_seen=datetime.utcnow()
                 )
                 
-                graph.add_node(node, user_id)
+                # add_node / add_relationship_dynamic return False on failure instead of raising
+                graph_stored = bool(graph.add_node(node, user_id))
                 
                 # Create relationships using dynamic labels (matches chat backend)
-                for related in related_to:
-                    graph.add_relationship_dynamic(
+                for related in related_to if graph_stored else []:
+                    if graph.add_relationship_dynamic(
                         from_node=name_val,
                         to_node=related,
                         rel_label="USES",
                         user_id=user_id,
                         confidence=0.8,
                         source_conversation_id="windsurf-session",
-                    )
-                graph_stored = True
+                    ):
+                        links_created += 1
             except Exception as e:
                 logger.warning(f"Graph storage failed for store_code_entity: {e}")
             
@@ -1429,8 +1294,8 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 "success": True,
                 "entity": name_val,
                 "type": entity_type,
-                "relationships_created": len(related_to),
-                "stored_in": ["neo4j", "sqlite"]
+                "relationships_created": links_created,
+                "stored_in": (["neo4j"] if graph_stored else []) + ["mcp-sqlite"]
             }, indent=2))]
         
         elif name == "store_solution":
@@ -1443,35 +1308,11 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             
             stored_items = []
             
-            # Store in memory
-            try:
-                from memory.memory_evolution import MemoryEvolution
-                memory_store = get_memory_store()
-                if not (memory_store and memory_store.is_available):
-                    # MemoryEvolution skips the write without error when the store is
-                    # unavailable, which reported success while persisting nothing.
-                    raise RuntimeError("memory store unavailable")
-                evolution = MemoryEvolution(memory_store)
-                
-                solution_text = f"Problem: {problem}\nSolution: {solution}"
-                if code_after:
-                    solution_text += f"\nCode: {code_after[:300]}"
-                
-                note = await evolution.add_memory(
-                    content=solution_text,
-                    user_id=user_id,
-                    source_conversation_id="windsurf-solution"
-                )
-                stored_items.append("memory")
-            except Exception as e:
-                logger.warning(f"Memory storage failed: {e}")
-            
             # Store in graph using dynamic relationships (matches chat backend)
             try:
                 graph = get_graph_store()
                 if graph and graph.is_available:
                     from knowledge_graph.types import GraphNode, NodeType
-                    from datetime import datetime
                     
                     # Use hash suffix to avoid name collisions
                     import hashlib as _hl
@@ -1481,18 +1322,18 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     
                     # Create problem node
                     problem_node = GraphNode(
-                        label=NodeType.Entity,
+                        label=NodeType.ENTITY,
                         name=prob_name,
                         node_type="error",
                         properties={"full_text": problem},
                         created_at=datetime.utcnow(),
                         last_seen=datetime.utcnow()
                     )
-                    graph.add_node(problem_node, user_id)
+                    graph_ok = bool(graph.add_node(problem_node, user_id))
                     
                     # Create solution node
                     solution_node = GraphNode(
-                        label=NodeType.Entity,
+                        label=NodeType.ENTITY,
                         name=sol_name,
                         node_type="solution",
                         properties={
@@ -1502,25 +1343,25 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                         created_at=datetime.utcnow(),
                         last_seen=datetime.utcnow()
                     )
-                    graph.add_node(solution_node, user_id)
+                    graph_ok = bool(graph.add_node(solution_node, user_id)) and graph_ok
                     
                     # Invalidate old SOLVED_BY rels from this problem (temporal conflict resolution)
                     graph.invalidate_relationships(prob_name, "SOLVED_BY", user_id)
                     
                     # Link problem -> solution using dynamic label
-                    graph.add_relationship_dynamic(
+                    graph_ok = bool(graph.add_relationship_dynamic(
                         from_node=prob_name,
                         to_node=sol_name,
                         rel_label="SOLVED_BY",
                         user_id=user_id,
                         confidence=0.9,
                         source_conversation_id="windsurf-solution",
-                    )
+                    )) and graph_ok
                     
                     # Link technologies using dynamic labels
                     for tech in technologies:
                         tech_node = GraphNode(
-                            label=NodeType.Entity,
+                            label=NodeType.ENTITY,
                             name=tech,
                             node_type="technology",
                             created_at=datetime.utcnow(),
@@ -1537,7 +1378,10 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                             source_conversation_id="windsurf-solution",
                         )
                     
-                    stored_items.append("graph")
+                    if graph_ok:
+                        stored_items.append("neo4j")
+                    else:
+                        logger.warning("Graph storage failed for store_solution: Neo4j rejected a write")
             except Exception as e:
                 logger.warning(f"Graph storage failed for store_solution: {e}")
             
@@ -1545,7 +1389,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             from mcp_knowledge_db import get_mcp_knowledge_db
             db = get_mcp_knowledge_db()
             sol_id = db.store_solution(problem, solution, technologies, code_before, code_after)
-            stored_items.append("sqlite")
+            stored_items.append("mcp-sqlite")
             
             return [TextContent(type="text", text=json.dumps({
                 "success": True,
@@ -1586,15 +1430,17 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             # Use add_relationship_dynamic for semantic labels (same as chat backend LLM extractor)
             stored_in = []
             try:
-                graph.add_relationship_dynamic(
+                if graph.add_relationship_dynamic(
                     from_node=from_entity,
                     to_node=to_entity,
                     rel_label=relationship,
                     user_id=user_id,
                     confidence=0.8,
                     source_conversation_id="windsurf-session",
-                )
-                stored_in.append("neo4j")
+                ):
+                    stored_in.append("neo4j")
+                else:
+                    logger.warning("Graph storage failed for link_entities: Neo4j rejected the write")
             except Exception as e:
                 logger.warning(f"Graph storage failed for link_entities: {e}")
             
@@ -1603,7 +1449,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             sqlite_db = get_mcp_knowledge_db()
             content = f"Relationship: {from_entity} {relationship} {to_entity}"
             sqlite_db.store_memory(content, 'pattern', [])
-            stored_in.append("sqlite")
+            stored_in.append("mcp-sqlite")
             
             return [TextContent(type="text", text=json.dumps({
                 "success": True,
@@ -1621,7 +1467,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             results = []
             sources = []
             
-            # Try MongoDB skill store first
+            # Try the JSON skill store first
             skill_store = get_skill_store()
             if skill_store:
                 matches = await skill_store.find_matching_skills(query, file_path)
@@ -1636,9 +1482,9 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                         "code_template": skill.code_template,
                         "technologies": skill.technologies,
                         "times_used": skill.times_used,
-                        "source": "mongodb"
+                        "source": "json-file"
                     })
-                sources.append("mongodb")
+                sources.append("json-file")
             
             # Also search SQLite knowledge DB
             from mcp_knowledge_db import get_mcp_knowledge_db
@@ -1713,7 +1559,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             skill_id = None
             source = "sqlite"
             
-            # Try MongoDB skill store first
+            # Try the JSON skill store first
             skill_store = get_skill_store()
             if skill_store:
                 try:
@@ -1732,9 +1578,9 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                         user_id="windsurf"
                     )
                     skill_id = await skill_store.add_skill(skill)
-                    source = "mongodb"
+                    source = "json-file"
                 except Exception as e:
-                    logger.debug(f"MongoDB skill creation failed: {e}, using SQLite")
+                    logger.warning(f"Learning store: skill creation failed: {e}, using SQLite")
             
             # Always save to SQLite as well
             from mcp_knowledge_db import get_mcp_knowledge_db
@@ -1763,38 +1609,50 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         elif name == "record_skill_outcome":
             skill_id = arguments.get("skill_id", "")
             successful = arguments.get("successful", False)
-            new_confidence = 0.5
-            source = "sqlite"
+            new_confidence = None
+            updated_in = []
+            json_error = None
             
-            # Try MongoDB first
+            # A skill lives in the JSON skill store, the SQLite one, or both (with
+            # different ids); update whichever has this id
             skill_store = get_skill_store()
             if skill_store:
                 try:
-                    await skill_store.update_skill_usage(skill_id, successful)
                     skill = await skill_store.get_skill(skill_id)
-                    new_confidence = skill.confidence if skill else 0.5
-                    source = "mongodb"
+                    if skill:
+                        await skill_store.update_skill_usage(skill_id, successful)
+                        new_confidence = skill.confidence
+                        updated_in.append("json-file")
                 except Exception as e:
-                    logger.debug(f"MongoDB skill outcome failed: {e}, using SQLite")
+                    json_error = e
+                    logger.warning(f"Learning store: skill outcome failed: {e}, using SQLite")
             
-            # Always update SQLite as well
             from mcp_knowledge_db import get_mcp_knowledge_db
             db = get_mcp_knowledge_db()
-            db.update_skill_usage(skill_id, successful)
+            if db.update_skill_usage(skill_id, successful):
+                updated_in.append("mcp-sqlite")
+            elif not updated_in and db.update_solution_usage(skill_id, successful):
+                # find_skill also lists stored solutions, and tells the editor to report them here
+                updated_in.append("mcp-sqlite-solutions")
+            
+            if not updated_in:
+                if json_error:
+                    raise RuntimeError(f"Could not record the outcome for skill {skill_id}: {json_error}")
+                raise ValueError(f"Unknown skill_id: {skill_id}")
             
             return [TextContent(type="text", text=json.dumps({
                 "success": True,
                 "skill_id": skill_id,
                 "outcome": "success" if successful else "failure",
-                "new_confidence": round(new_confidence, 2),
-                "source": source
+                "new_confidence": round(new_confidence, 2) if new_confidence is not None else None,
+                "updated_in": updated_in
             }, indent=2))]
         
         # SESSION CONTINUITY HANDLERS
         elif name == "create_session":
             session_mgr = get_session_manager()
             
-            # Try MongoDB first, fall back to SQLite
+            # Try the JSON learning store first, fall back to SQLite
             if session_mgr:
                 try:
                     create_kwargs = {
@@ -1803,20 +1661,17 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                         "task_goal": arguments.get("task_goal", ""),
                         "plan_steps": arguments.get("plan_steps", []),
                     }
-                    # Pass technologies if the session manager supports it
-                    if arguments.get("technologies"):
-                        create_kwargs["technologies"] = arguments["technologies"]
                     session = await session_mgr.create_session(**create_kwargs)
                     return [TextContent(type="text", text=json.dumps({
                         "success": True,
                         "session_id": session.id,
                         "task": session.task_description,
                         "steps": len(session.plan_steps),
-                        "source": "mongodb",
+                        "source": "json-file",
                         "message": "Session created. Use update_session to track progress."
                     }, indent=2))]
                 except Exception as e:
-                    logger.debug(f"MongoDB session failed: {e}, using SQLite")
+                    logger.warning(f"Learning store: session failed: {e}, using SQLite")
             
             # SQLite fallback
             from mcp_knowledge_db import get_mcp_knowledge_db
@@ -1842,13 +1697,13 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             sessions = []
             source = "sqlite"
             
-            # Try MongoDB first
+            # Try the JSON learning store first
             if session_mgr:
                 try:
                     sessions = await session_mgr.get_resumable_sessions("windsurf")
-                    source = "mongodb"
+                    source = "json-file"
                 except Exception as e:
-                    logger.debug(f"MongoDB sessions failed: {e}, using SQLite")
+                    logger.warning(f"Learning store: sessions failed: {e}, using SQLite")
             
             # SQLite fallback/addition
             if not sessions:
@@ -1877,7 +1732,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             session_id = arguments.get("session_id", "")
             session_mgr = get_session_manager()
             
-            # Try MongoDB first
+            # Try the JSON learning store first
             if session_mgr:
                 try:
                     session = await session_mgr.get_session(session_id)
@@ -1890,10 +1745,10 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                             "working_files": [f.path for f in session.working_files],
                             "current_step_index": session.current_step_index,
                             "total_steps": len(session.plan_steps),
-                            "source": "mongodb"
+                            "source": "json-file"
                         }, indent=2))]
                 except Exception as e:
-                    logger.debug(f"MongoDB resume failed: {e}, trying SQLite")
+                    logger.warning(f"Learning store: resume failed: {e}, trying SQLite")
             
             # SQLite fallback
             from mcp_knowledge_db import get_mcp_knowledge_db
@@ -1931,7 +1786,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             session_id = arguments.get("session_id", "")
             session_mgr = get_session_manager()
             
-            # Try MongoDB first
+            # Try the JSON learning store first
             if session_mgr:
                 try:
                     session = await session_mgr.get_session(session_id)
@@ -1955,10 +1810,10 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                             "updates": updates,
                             "progress": f"{session.progress_percent:.0f}%",
                             "status": session.status.value,
-                            "source": "mongodb"
+                            "source": "json-file"
                         }, indent=2))]
                 except Exception as e:
-                    logger.debug(f"MongoDB update failed: {e}, trying SQLite")
+                    logger.warning(f"Learning store: update failed: {e}, trying SQLite")
             
             # SQLite fallback
             from mcp_knowledge_db import get_mcp_knowledge_db
@@ -2024,7 +1879,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             should_create_skill = False
             source = "sqlite"
             
-            # Try MongoDB reflection first
+            # Try the JSON reflection store first
             if reflection:
                 try:
                     from pipeline.reflection_system import OutcomeType
@@ -2043,9 +1898,9 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     )
                     outcome_id = outcome.id
                     should_create_skill = outcome.should_create_skill
-                    source = "mongodb"
+                    source = "json-file"
                 except Exception as e:
-                    logger.debug(f"MongoDB reflection failed: {e}, using SQLite")
+                    logger.warning(f"Learning store: reflection failed: {e}, using SQLite")
             
             # Always record in SQLite knowledge DB
             from mcp_knowledge_db import get_mcp_knowledge_db
@@ -2082,7 +1937,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     technologies=technologies
                 )
             except Exception as e:
-                logger.debug(f"Adaptive retrieval learning failed: {e}")
+                logger.warning(f"Adaptive retrieval learning failed: {e}")
             
             # Auto-store AI reasoning
             try:
@@ -2098,7 +1953,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     technologies=technologies
                 )
             except Exception as e:
-                logger.debug(f"AI reasoning storage failed: {e}")
+                logger.warning(f"AI reasoning storage failed: {e}")
             
             # Auto-generate playbook from successful outcomes with substantial solutions
             auto_playbook_id = None
@@ -2157,7 +2012,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                         })
                         logger.info(f"Auto-generated playbook {auto_playbook_id} from outcome")
                 except Exception as e:
-                    logger.debug(f"Auto-playbook generation failed: {e}")
+                    logger.warning(f"Auto-playbook generation failed: {e}")
             
             return [TextContent(type="text", text=json.dumps({
                 "success": True,
@@ -2174,7 +2029,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             insights_list = []
             source = "sqlite"
             
-            # Try MongoDB reflection first
+            # Try the JSON reflection store first
             if reflection:
                 try:
                     hours = arguments.get("reflect_hours", 24)
@@ -2197,10 +2052,10 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                             for i in insights_list[:10]
                         ],
                         "count": len(insights_list),
-                        "source": "mongodb"
+                        "source": "json-file"
                     }, indent=2))]
                 except Exception as e:
-                    logger.debug(f"MongoDB insights failed: {e}, using SQLite")
+                    logger.warning(f"Learning store: insights failed: {e}, using SQLite")
             
             # SQLite fallback - generate insights from outcome stats
             from mcp_knowledge_db import get_mcp_knowledge_db
@@ -2251,14 +2106,14 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         elif name == "get_reflection_stats":
             reflection = get_reflection_system()
             
-            # Try MongoDB first
+            # Try the JSON learning store first
             if reflection:
                 try:
                     stats = reflection.get_statistics()
-                    stats["source"] = "mongodb"
+                    stats["source"] = "json-file"
                     return [TextContent(type="text", text=json.dumps(stats, indent=2))]
                 except Exception as e:
-                    logger.debug(f"MongoDB stats failed: {e}, using SQLite")
+                    logger.warning(f"Learning store: stats failed: {e}, using SQLite")
             
             # SQLite fallback
             from mcp_knowledge_db import get_mcp_knowledge_db
@@ -2291,7 +2146,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     technologies=technologies
                 )
             except Exception as e:
-                logger.debug(f"LLM skill generation failed: {e}")
+                logger.warning(f"LLM skill generation failed: {e}")
             
             if not candidate:
                 # Fallback: create a basic skill from the problem/solution directly
@@ -2322,7 +2177,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     "message": "Basic skill created from problem/solution (LLM generation unavailable)"
                 }, indent=2))]
             
-            # LLM generated a candidate - save to MongoDB + SQLite
+            # LLM generated a candidate - save to JSON learning store + SQLite
             skill_store = get_skill_store()
             if skill_store:
                 try:
@@ -2343,9 +2198,9 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                     )
                     await skill_store.add_skill(skill)
                     skill_id = skill.id
-                    source = "mongodb"
+                    source = "json-file"
                 except Exception as e:
-                    logger.debug(f"MongoDB skill save failed: {e}")
+                    logger.warning(f"Learning store: skill save failed: {e}")
             
             # Always save to SQLite as well
             from mcp_knowledge_db import get_mcp_knowledge_db
@@ -2377,7 +2232,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             task_desc = arguments.get("task_description", "")
             technologies = arguments.get("technologies", [])
             
-            # Try MongoDB cross-session learning first
+            # Try JSON cross-session learning first
             try:
                 from pipeline.cross_session_learning import get_cross_session_learner
                 learner = get_cross_session_learner()
@@ -2390,11 +2245,11 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 return [TextContent(type="text", text=json.dumps({
                     "related_sessions": related,
                     "count": len(related),
-                    "source": "mongodb"
+                    "source": "json-file"
                 }, indent=2))]
                 
             except Exception as e:
-                logger.debug(f"MongoDB cross-session failed: {e}, using SQLite")
+                logger.warning(f"Learning store: cross-session failed: {e}, using SQLite")
             
             # SQLite fallback - search sessions by keyword matching
             from mcp_knowledge_db import get_mcp_knowledge_db
@@ -2442,12 +2297,12 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 from skills.skill_ab_testing import get_skill_ab_tester
                 tester = get_skill_ab_tester()
                 stats = tester.get_experiment_stats()
-                stats["source"] = "mongodb"
+                stats["source"] = "json-file"
                 
                 return [TextContent(type="text", text=json.dumps(stats, indent=2))]
                 
             except Exception as e:
-                logger.debug(f"A/B testing stats failed: {e}, using SQLite fallback")
+                logger.warning(f"A/B testing stats failed: {e}, using SQLite fallback")
                 
                 # SQLite fallback - derive experiment-like stats from skill outcomes
                 from mcp_knowledge_db import get_mcp_knowledge_db
@@ -2455,7 +2310,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 
                 with db._get_conn() as conn:
                     skills = conn.execute("""
-                        SELECT name, times_used, success_count, confidence 
+                        SELECT name, times_used, successes, confidence 
                         FROM skills WHERE times_used > 0
                         ORDER BY times_used DESC LIMIT 20
                     """).fetchall()
@@ -2466,8 +2321,8 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                         experiments.append({
                             "skill": s["name"],
                             "trials": s["times_used"],
-                            "successes": s["success_count"],
-                            "success_rate": round(s["success_count"] / max(s["times_used"], 1), 2),
+                            "successes": s["successes"],
+                            "success_rate": round(s["successes"] / max(s["times_used"], 1), 2),
                             "confidence": round(s["confidence"], 2)
                         })
                 
@@ -2482,24 +2337,29 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
                 from skills.auto_skill_learner import get_auto_skill_learner
                 learner = get_auto_skill_learner()
                 status = learner.get_learning_status()
-                status["source"] = "mongodb"
+                status["source"] = "process-memory (resets when this MCP process restarts)"
                 
                 return [TextContent(type="text", text=json.dumps(status, indent=2))]
                 
             except Exception as e:
-                logger.debug(f"Auto learning status failed: {e}, using SQLite fallback")
+                logger.warning(f"Auto learning status failed: {e}, using SQLite fallback")
                 
                 # SQLite fallback - check patterns ready for skill generation
                 from mcp_knowledge_db import get_mcp_knowledge_db
                 db = get_mcp_knowledge_db()
-                patterns = db.get_patterns_ready_for_skill(min_occurrences=3)
+                patterns = db.get_patterns_ready_for_skill(min_successes=3)
                 stats = db.get_outcome_stats()
                 
                 return [TextContent(type="text", text=json.dumps({
                     "auto_learning_active": True,
                     "patterns_detected": len(patterns),
                     "patterns_ready_for_skills": [
-                        {"pattern": p.get("pattern_key", ""), "occurrences": p.get("occurrences", 0)}
+                        {
+                            "keywords": p.get("keywords", []),
+                            "technologies": p.get("technologies", []),
+                            "successes": p.get("success_count", 0),
+                            "success_rate": round(p.get("success_rate", 0), 2),
+                        }
                         for p in patterns[:10]
                     ],
                     "total_outcomes_tracked": stats.get("total_outcomes", 0),
@@ -2677,7 +2537,7 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             
             return [TextContent(type="text", text=json.dumps({
                 "databases": {
-                    "1_mongodb_chat": "Original chat app (separate)",
+                    "1_chat_app": "Engram's chat data (app.db); this MCP server does not read it",
                     "2_user_interactions": user_db.get_stats(),
                     "3_ai_reasoning": ai_db.get_stats(),
                     "4_knowledge": knowledge_db.get_stats()
@@ -2901,7 +2761,8 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             successful = arguments.get("successful", False)
             model_used = arguments.get("model_used", "unknown")
             
-            db.update_playbook_usage(playbook_id, successful)
+            if not db.update_playbook_usage(playbook_id, successful):
+                raise ValueError(f"Unknown playbook_id: {playbook_id}")
             
             # Also record as a general outcome for learning
             outcome_id = db.record_outcome({
@@ -3023,11 +2884,13 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             }, indent=2))]
         
         else:
-            return [TextContent(type="text", text=f"Unknown tool: {name}")]
+            raise ValueError(f"Unknown tool: {name}")
             
     except Exception as e:
+        # Re-raise so the SDK returns the result with isError=true. Returning the
+        # message as normal content made every failure look like a success.
         logger.error(f"Tool {name} failed: {e}")
-        return [TextContent(type="text", text=json.dumps({"error": str(e)}))]
+        raise
 
 
 async def main():

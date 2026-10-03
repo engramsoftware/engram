@@ -23,6 +23,7 @@ from database import get_database
 from pipeline.inlet import enrich_request
 from pipeline.outlet import process_response
 from llm.factory import create_provider
+from llm.registry import resolve_credentials, route_model
 from llm.anthropic_provider import ANTHROPIC_FAST_MODEL
 from config import get_settings
 from memory.memory_store import MemoryStore
@@ -474,62 +475,27 @@ async def chat_completions(
         except Exception as e:
             logger.debug(f"Agent graph retrieval skipped: {e}")
         
-        # Create LLM provider
-        # Map model name to provider
-        model_lower = request.model.lower()
-        provider_name = "openai"  # Default
-        if "claude" in model_lower:
-            provider_name = "anthropic"
-        # If the caller indicates local/llama and LM Studio is configured, prefer LM Studio.
-        elif settings.lmstudio_base_url and (
-            "local" in model_lower
-            or "lmstudio" in model_lower
-            # If the model string looks like an LM Studio model id (e.g. "qwen/..."),
-            # prefer LM Studio. This also covers most local model IDs.
-            or "/" in model_lower
-        ):
-            provider_name = "lmstudio"
-        elif "ollama" in model_lower:
-            provider_name = "ollama"
+        # Resolve provider + credentials: the user's saved settings win, .env fills gaps
+        llm_settings = await db.llm_settings.find_one({"userId": user_id}) or {}
+        stored_providers = llm_settings.get("providers", {})
 
-        # Resolve API key: prefer user's encrypted key from MongoDB,
-        # fall back to .env settings only if MongoDB has nothing
+        # Pick the provider from the model string ("ollama:llama3", a model a provider
+        # lists, claude-*/gpt-*, then the user's default). The prefix is not sent on.
+        provider_name, model_name = route_model(
+            request.model, stored_providers, llm_settings.get("defaultProvider"),
+        )
+
+        provider_config = stored_providers.get(provider_name, {})
         api_key: Optional[str] = None
-        base_url: Optional[str] = None
+        if provider_config.get("apiKey"):
+            try:
+                from utils.encryption import decrypt_api_key
+                api_key = decrypt_api_key(provider_config["apiKey"])
+            except Exception as e:
+                logger.warning(f"Failed to decrypt API key for {provider_name}: {e}")
+        api_key, base_url = resolve_credentials(provider_name, api_key, provider_config.get("baseUrl"))
 
-        llm_settings = await db.llm_settings.find_one({"userId": user_id})
-        if llm_settings:
-            provider_config = llm_settings.get("providers", {}).get(provider_name, {})
-            encrypted_key = provider_config.get("apiKey")
-            if encrypted_key:
-                try:
-                    from utils.encryption import decrypt_api_key
-                    api_key = decrypt_api_key(encrypted_key)
-                except Exception as e:
-                    logger.warning(f"Failed to decrypt API key for {provider_name}: {e}")
-            # Use stored base URL for local providers
-            if provider_name in ("lmstudio", "ollama"):
-                base_url = provider_config.get("baseUrl")
-
-        # Fall back to .env settings if no user key found
-        if not api_key:
-            if provider_name == "openai":
-                api_key = settings.openai_api_key
-            elif provider_name == "anthropic":
-                api_key = settings.anthropic_api_key
-
-        # Fall back to .env base URLs if not set from user config
-        if not base_url:
-            if provider_name == "openai":
-                base_url = settings.openai_base_url
-            elif provider_name == "anthropic":
-                base_url = settings.anthropic_base_url
-            elif provider_name == "lmstudio":
-                base_url = settings.lmstudio_base_url
-            elif provider_name == "ollama":
-                base_url = settings.ollama_base_url
-
-        logger.info(f"Agent provider routing: model={request.model} -> provider={provider_name} base_url={base_url}")
+        logger.info(f"Agent provider routing: model={request.model} -> provider={provider_name} model={model_name} base_url={base_url}")
         provider = create_provider(provider_name, api_key=api_key, base_url=base_url)
 
         if not provider:
@@ -544,7 +510,7 @@ async def chat_completions(
                 "user_id": user_id,
                 "conversation_id": conversation_id,
                 "provider": provider_name,
-                "model": request.model,
+                "model": model_name,
                 "source": "openai_compat",
             }
             messages_dict = await _addin_registry.run_interceptors_before(
@@ -556,12 +522,12 @@ async def chat_completions(
         # Handle streaming requests
         logger.info(f"DEBUG: request.stream type={type(request.stream)}, value={request.stream}")
         if request.stream:
-            logger.info(f"Agent streaming request for model={request.model}")
+            logger.info(f"Agent streaming request for model={model_name}")
             return StreamingResponse(
                 generate_sse_stream(
                     provider=provider,
                     messages_dict=messages_dict,
-                    model=request.model,
+                    model=model_name,
                     temperature=request.temperature,
                     max_tokens=request.max_tokens,
                     user_id=user_id,
@@ -585,7 +551,7 @@ async def chat_completions(
         # Non-streaming response
         response = await provider.generate(
             messages=messages_dict,
-            model=request.model,
+            model=model_name,
             temperature=request.temperature,
             max_tokens=request.max_tokens
         )
@@ -598,7 +564,7 @@ async def chat_completions(
                 "conversation_id": conversation_id,
                 "message_id": "",
                 "provider": provider_name,
-                "model": request.model,
+                "model": model_name,
                 "source": "openai_compat",
             }
             response.content = await _addin_registry.run_interceptors_after(
@@ -612,13 +578,13 @@ async def chat_completions(
             negative_store = NegativeKnowledgeStore(mongo_db=db)
             # Memory extraction uses the model that answered this request
             memory_extractor = MemoryExtractor(
-                provider_name=provider_name, model=request.model, api_key=api_key, base_url=base_url,
+                provider_name=provider_name, model=model_name, api_key=api_key, base_url=base_url,
             )
             conflict_resolver = ConflictResolver(
-                provider_name=provider_name, model=request.model, api_key=api_key, base_url=base_url,
+                provider_name=provider_name, model=model_name, api_key=api_key, base_url=base_url,
             )
             negative_extractor = NegativeKnowledgeExtractor(
-                provider_name=provider_name, model=request.model, api_key=api_key, base_url=base_url,
+                provider_name=provider_name, model=model_name, api_key=api_key, base_url=base_url,
             )
 
             result = await process_response(
@@ -633,7 +599,7 @@ async def chat_completions(
                 negative_store=negative_store,
                 graph_store=graph_store,
                 llm_provider=provider,
-                llm_model=request.model,
+                llm_model=model_name,
             )
             logger.info(f"Agent outlet: {result}")
         except Exception as e:

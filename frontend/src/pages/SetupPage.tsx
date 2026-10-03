@@ -14,7 +14,7 @@ import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '../stores/authStore'
 import { useUIStore } from '../stores/uiStore'
 import { authApi, settingsApi } from '../services/api'
-import { PROVIDER_META } from '../utils/providers'
+import { PROVIDER_IDS, PROVIDER_META } from '../utils/providers'
 import {
   MessageSquare,
   User,
@@ -26,55 +26,28 @@ import {
   Sparkles,
   Globe,
   Monitor,
+  Server,
   Shield,
   AlertTriangle,
 } from 'lucide-react'
 
-type Provider = 'lmstudio' | 'ollama' | 'openai' | 'anthropic' | 'skip'
+/** A provider id, or 'skip' to set one up later */
+type Provider = string
 
-interface ProviderOption {
-  id: Provider
-  name: string
-  description: string
-  icon: React.ReactNode
-  cost: string
-  needsKey: boolean
+const PROVIDER_ICONS: Record<string, React.ReactNode> = {
+  lmstudio: <Monitor size={24} />,
+  ollama: <Cpu size={24} />,
+  openai: <Sparkles size={24} />,
+  anthropic: <Globe size={24} />,
+  custom: <Server size={24} />,
 }
 
-const PROVIDERS: ProviderOption[] = [
-  {
-    id: 'lmstudio',
-    name: 'LM Studio',
-    description: 'Run AI models locally on your PC. Free, private, no internet needed.',
-    icon: <Monitor size={24} />,
-    cost: 'Free (local)',
-    needsKey: false,
-  },
-  {
-    id: 'ollama',
-    name: 'Ollama',
-    description: 'Another great local option. Lightweight and easy to set up.',
-    icon: <Cpu size={24} />,
-    cost: 'Free (local)',
-    needsKey: false,
-  },
-  {
-    id: 'openai',
-    name: 'OpenAI',
-    description: 'GPT-4o and GPT-4o-mini. Best overall quality. Pay per use.',
-    icon: <Sparkles size={24} />,
-    cost: 'Pay per token',
-    needsKey: true,
-  },
-  {
-    id: 'anthropic',
-    name: 'Anthropic',
-    description: 'Claude Sonnet and Haiku. Excellent for long conversations.',
-    icon: <Globe size={24} />,
-    cost: 'Pay per token',
-    needsKey: true,
-  },
-]
+/** The wizard offers every provider in utils/providers.ts, in its order */
+const PROVIDERS = PROVIDER_IDS.map(id => ({
+  id,
+  ...PROVIDER_META[id],
+  icon: PROVIDER_ICONS[id] ?? <Cpu size={24} />,
+}))
 
 export default function SetupPage() {
   const [step, setStep] = useState(1)
@@ -94,6 +67,7 @@ export default function SetupPage() {
 
   // Step 4: Config
   const [apiKey, setApiKey] = useState('')
+  const [baseUrl, setBaseUrl] = useState('')
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
   const [testing, setTesting] = useState(false)
 
@@ -127,7 +101,7 @@ export default function SetupPage() {
     setTesting(true)
     setTestResult(null)
     try {
-      const result = await settingsApi.testConnection(provider, apiKey || undefined)
+      const result = await settingsApi.testConnection(provider, apiKey || undefined, baseUrl.trim() || undefined)
       setTestResult(result.success
         ? { ok: true, message: 'Connected' }
         : { ok: false, message: result.error || result.message || 'No response from the provider' })
@@ -145,7 +119,11 @@ export default function SetupPage() {
     setIsLoading(true)
     try {
       await settingsApi.updateLLMSettings({
-        providers: { [provider]: { enabled: true, ...(apiKey ? { api_key: apiKey } : {}) } },
+        providers: { [provider]: {
+          enabled: true,
+          ...(apiKey ? { api_key: apiKey } : {}),
+          ...(baseUrl.trim() ? { base_url: baseUrl.trim() } : {}),
+        } },
         default_provider: provider,
       })
     } catch (err) {
@@ -421,14 +399,14 @@ export default function SetupPage() {
                       <div className="flex items-center justify-between">
                         <span className="font-medium text-dark-text-primary">{p.name}</span>
                         <span className={`text-xs px-2 py-0.5 rounded-full ${
-                          p.cost.includes('Free')
+                          p.local
                             ? 'bg-green-500/20 text-green-400'
                             : 'bg-amber-500/20 text-amber-400'
                         }`}>
                           {p.cost}
                         </span>
                       </div>
-                      <p className="text-sm text-dark-text-secondary mt-1">{p.description}</p>
+                      <p className="text-sm text-dark-text-secondary mt-1">{p.blurb}</p>
                     </div>
                     {provider === p.id && (
                       <Check size={20} className="text-indigo-400 mt-0.5" />
@@ -474,9 +452,11 @@ export default function SetupPage() {
                 <p className="text-sm text-dark-text-secondary">
                   {provider === 'skip'
                     ? 'You can configure an AI provider later in Settings'
-                    : selectedProvider?.needsKey
+                    : selectedProvider?.needsApiKey
                       ? 'Enter your API key to get started'
-                      : 'Make sure the local server is running'}
+                      : selectedProvider?.requiresUrl
+                        ? 'Point Engram at your server'
+                        : 'Make sure the local server is running'}
                 </p>
               </div>
             </div>
@@ -489,24 +469,15 @@ export default function SetupPage() {
                   We'll take you there now.
                 </p>
               </div>
-            ) : selectedProvider?.needsKey ? (
+            ) : selectedProvider?.needsApiKey ? (
               <>
                 <div className="p-4 rounded-lg bg-dark-bg-secondary border border-dark-border text-sm">
-                  {provider === 'openai' && (
+                  {selectedProvider.keyUrl && (
                     <p className="text-dark-text-secondary">
                       Get your API key from{' '}
-                      <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer"
+                      <a href={selectedProvider.keyUrl} target="_blank" rel="noopener noreferrer"
                          className="text-indigo-400 hover:underline">
-                        platform.openai.com/api-keys
-                      </a>
-                    </p>
-                  )}
-                  {provider === 'anthropic' && (
-                    <p className="text-dark-text-secondary">
-                      Get your API key from{' '}
-                      <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener noreferrer"
-                         className="text-indigo-400 hover:underline">
-                        console.anthropic.com
+                        {new URL(selectedProvider.keyUrl).host}
                       </a>
                     </p>
                   )}
@@ -517,7 +488,43 @@ export default function SetupPage() {
                     type="password"
                     value={apiKey}
                     onChange={e => setApiKey(e.target.value)}
-                    placeholder={provider === 'openai' ? 'sk-...' : 'sk-ant-...'}
+                    placeholder={selectedProvider.keyPlaceholder}
+                    className="w-full bg-dark-bg-secondary border border-dark-border rounded-lg
+                               px-4 py-2.5 text-dark-text-primary placeholder-dark-text-secondary/70
+                               focus:outline-none focus:border-indigo-500 transition-colors font-mono text-sm"
+                  />
+                </div>
+              </>
+            ) : selectedProvider?.requiresUrl ? (
+              <>
+                <div className="p-4 rounded-lg bg-dark-bg-secondary border border-dark-border text-sm space-y-2">
+                  <p className="text-dark-text-secondary">
+                    Any server that speaks the OpenAI API works: llama.cpp (<code className="text-indigo-300 bg-dark-bg-primary px-1 rounded">llama-server</code>),
+                    vLLM, Groq, Together, OpenRouter.
+                  </p>
+                  <p className="text-dark-text-secondary">
+                    Running on this computer while Engram is in Docker? Use <code className="text-indigo-300 bg-dark-bg-primary px-1 rounded">host.docker.internal</code> instead of <code className="text-indigo-300 bg-dark-bg-primary px-1 rounded">localhost</code>.
+                  </p>
+                </div>
+                <div>
+                  <label className="block text-sm text-dark-text-secondary mb-1">Server URL</label>
+                  <input
+                    type="url"
+                    value={baseUrl}
+                    onChange={e => setBaseUrl(e.target.value)}
+                    placeholder={selectedProvider.urlExample}
+                    className="w-full bg-dark-bg-secondary border border-dark-border rounded-lg
+                               px-4 py-2.5 text-dark-text-primary placeholder-dark-text-secondary/70
+                               focus:outline-none focus:border-indigo-500 transition-colors font-mono text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm text-dark-text-secondary mb-1">API Key (optional)</label>
+                  <input
+                    type="password"
+                    value={apiKey}
+                    onChange={e => setApiKey(e.target.value)}
+                    placeholder={selectedProvider.keyPlaceholder}
                     className="w-full bg-dark-bg-secondary border border-dark-border rounded-lg
                                px-4 py-2.5 text-dark-text-primary placeholder-dark-text-secondary/70
                                focus:outline-none focus:border-indigo-500 transition-colors font-mono text-sm"
@@ -571,7 +578,7 @@ export default function SetupPage() {
               <div className="flex items-center gap-3 flex-wrap">
                 <button
                   onClick={handleTest}
-                  disabled={testing || (selectedProvider?.needsKey && !apiKey)}
+                  disabled={testing || (selectedProvider?.needsApiKey && !apiKey) || (selectedProvider?.requiresUrl && !baseUrl.trim())}
                   className="px-4 py-2 rounded-lg text-sm text-dark-text-primary border border-dark-border
                              hover:border-indigo-500/60 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
@@ -606,7 +613,7 @@ export default function SetupPage() {
               </button>
               <button
                 onClick={handleFinish}
-                disabled={isLoading}
+                disabled={isLoading || (selectedProvider?.requiresUrl && !baseUrl.trim())}
                 className="flex-1 bg-indigo-600 hover:bg-indigo-500 py-2.5 rounded-lg text-white
                            font-medium disabled:opacity-50 disabled:cursor-not-allowed
                            flex items-center justify-center gap-2 transition-colors"

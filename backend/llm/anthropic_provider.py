@@ -369,7 +369,7 @@ class AnthropicProvider(LLMProvider):
                     except Exception as e:
                         logger.warning(f"Failed to parse chunk: {e}")
     
-    async def test_connection(self) -> bool:
+    async def test_connection(self, timeout: float = 30.0) -> bool:
         """Check the key by listing models: free, and it doesn't depend on a model
         ID that may be retired. A gateway without a models endpoint (404/405) is
         checked with a 1-token message to the fast model instead."""
@@ -378,7 +378,7 @@ class AnthropicProvider(LLMProvider):
             return False
 
         try:
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.get(
                     f"{self.base_url}/v1/models",
                     headers=self._get_headers(),

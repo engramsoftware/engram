@@ -4,10 +4,11 @@ Supports local models running via Ollama.
 """
 
 import logging
-from typing import List, Dict, Any, Optional, AsyncGenerator
+from typing import List, Dict, Optional, AsyncGenerator
 import httpx
 
 from llm.base import LLMProvider, LLMResponse, StreamChunk, ModelInfo
+from llm.registry import normalize_base_url
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +23,7 @@ class OllamaProvider(LLMProvider):
     
     def __init__(self, api_key: Optional[str] = None, base_url: Optional[str] = None):
         super().__init__(api_key, base_url)
-        # Ollama default port is 11434
-        self.base_url = base_url or "http://host.docker.internal:11434"
+        self.base_url = normalize_base_url(self.provider_name, base_url)
     
     def _get_headers(self) -> Dict[str, str]:
         """Build request headers."""
@@ -158,10 +158,10 @@ class OllamaProvider(LLMProvider):
                     except Exception as e:
                         logger.warning(f"Failed to parse chunk: {e}")
     
-    async def test_connection(self) -> bool:
+    async def test_connection(self, timeout: float = 10.0) -> bool:
         """Test Ollama connectivity."""
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=timeout) as client:
                 response = await client.get(f"{self.base_url}/api/tags")
                 return response.status_code == 200
         except Exception as e:

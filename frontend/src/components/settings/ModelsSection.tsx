@@ -7,10 +7,10 @@
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { Cloud, Monitor, RefreshCw } from 'lucide-react'
+import { Cloud, Monitor, RefreshCw, Server } from 'lucide-react'
 import { settingsApi } from '../../services/api'
 import { friendlyModelName } from '../../utils/modelNames'
-import { newChatProvider, providerMeta } from '../../utils/providers'
+import { newChatProvider, providerMeta, providerReady } from '../../utils/providers'
 import type { LLMSettings } from '../../types/chat.types'
 import ProviderSettings from './ProviderSettings'
 import OptimizationSettings from './OptimizationSettings'
@@ -35,7 +35,8 @@ export default function ModelsSection({ settings, onUpdate }: Props) {
   const activated = (token: number) => { if (pendingSeq.current === token) setPending(null) }
   const providers = settings.available_providers
   const cloud = providers.filter(p => providerMeta(p).needsApiKey)
-  const local = providers.filter(p => !providerMeta(p).needsApiKey)
+  const local = providers.filter(p => providerMeta(p).local)
+  const own = providers.filter(p => !providerMeta(p).needsApiKey && !providerMeta(p).local)
 
   const group = (label: string, icon: React.ReactNode, list: string[]) => list.length > 0 && (
     <div className="space-y-2">
@@ -68,7 +69,8 @@ export default function ModelsSection({ settings, onUpdate }: Props) {
           <p className="text-xs text-dark-text-secondary">
             To start chatting, pick a provider below. <strong className="text-dark-text-primary">Cloud</strong> providers
             (OpenAI, Anthropic) need an API key; <strong className="text-dark-text-primary">on this computer</strong> means
-            LM Studio or Ollama running on the machine.
+            LM Studio or Ollama running on the machine; <strong className="text-dark-text-primary">your own server</strong> is
+            any OpenAI-compatible address (llama.cpp, vLLM, Groq...).
           </p>
         )}
 
@@ -76,6 +78,7 @@ export default function ModelsSection({ settings, onUpdate }: Props) {
         <legend className="text-sm font-medium text-dark-text-primary mb-2">Provider</legend>
         {group('Cloud (API key)', <Cloud size={12} />, cloud)}
         {group('On this computer', <Monitor size={12} />, local)}
+        {group('Your own server', <Server size={12} />, own)}
       </fieldset>
 
       <section aria-labelledby="cost-accuracy-heading" className="space-y-2">
@@ -115,18 +118,19 @@ function InUseCard({ provider, settings, onUpdate }: { provider: string; setting
     setModels(data.map((m: { id: string }) => m.id))
   }, 'Model list refreshed', "Couldn't load models")
 
-  const needsKey = meta.needsApiKey && !config?.api_key_set
+  const ready = providerReady(provider, config)
 
   return (
     <div className="rounded-lg border border-dark-accent-primary/40 bg-dark-bg-secondary p-4 space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-dark-text-secondary">New chats use</span>
         <span className="text-sm font-semibold text-dark-text-primary">{meta.name}</span>
-        <StatusPill status={needsKey ? 'needs-setup' : 'in-use'} />
+        <StatusPill status={ready ? 'in-use' : 'needs-setup'} />
       </div>
-      {needsKey && (
+      {!ready && (
         <p className="text-xs text-yellow-400 [.light_&]:text-yellow-800">
-          {meta.name} has no API key yet. Add one below, or pick another provider.
+          {meta.name} has no {meta.needsApiKey && !config?.api_key_set ? 'API key' : 'server URL'} yet.
+          Add one below, or pick another provider.
         </p>
       )}
       <div className="flex items-end gap-2">

@@ -123,10 +123,14 @@ class LLMProvider(ABC):
         pass
     
     @abstractmethod
-    async def test_connection(self) -> bool:
+    async def test_connection(self, timeout: float = 10.0) -> bool:
         """
         Test if the provider is reachable and credentials are valid.
-        
+
+        Args:
+            timeout: Seconds to wait before giving up (the chat path uses a short
+                one for its pre-flight check)
+
         Returns:
             True if connection successful, False otherwise
         """
@@ -560,9 +564,10 @@ class LLMProvider(ABC):
     ) -> List[Dict[str, Any]]:
         """Inject image attachments into the last user message for the LLM.
 
-        Handles three provider formats:
-          - **OpenAI / LM Studio / Ollama**: image_url content blocks with
-            base64 data URIs (works locally without public URLs).
+        Handles three provider formats (ProviderSpec.image_format):
+          - **OpenAI-style (OpenAI, LM Studio, Custom)**: image_url content
+            blocks with base64 data URIs (works locally without public URLs).
+          - **Ollama**: raw base64 strings in the message's "images" list.
           - **Anthropic API**: source blocks with base64 + media_type
             (Anthropic rejects image_url format).
           - **Text-only models**: appends "[User attached image(s)]" note.
@@ -605,6 +610,10 @@ class LLMProvider(ABC):
         # Read image files and encode as base64 for the API
         import base64
         from pathlib import Path
+        from llm.registry import IMAGE_ANTHROPIC, IMAGE_OLLAMA, IMAGE_OPENAI, get_spec
+
+        spec = get_spec(provider_name)
+        image_format = spec.image_format if spec else IMAGE_OPENAI
 
         # Resolve upload directory from the URL path
         upload_dir = Path(__file__).parent.parent.parent / "data" / "uploads"
@@ -625,7 +634,7 @@ class LLMProvider(ABC):
             b64_data = base64.b64encode(file_path.read_bytes()).decode("utf-8")
             b64_images.append(b64_data)
 
-            if provider_name == "anthropic":
+            if image_format == IMAGE_ANTHROPIC:
                 # Anthropic format: source block with base64 + media_type
                 image_blocks.append({
                     "type": "image",
@@ -636,7 +645,7 @@ class LLMProvider(ABC):
                     },
                 })
             else:
-                # OpenAI / LM Studio: data URI in image_url block
+                # OpenAI-style: data URI in image_url block
                 image_blocks.append({
                     "type": "image_url",
                     "image_url": {
@@ -644,7 +653,7 @@ class LLMProvider(ABC):
                     },
                 })
 
-        if provider_name == "ollama":
+        if image_format == IMAGE_OLLAMA:
             # Ollama uses a separate "images" array of raw base64 strings
             # on the message object, NOT OpenAI-style content blocks.
             messages[last_user_idx] = {
@@ -653,7 +662,7 @@ class LLMProvider(ABC):
                 "images": b64_images,
             }
         else:
-            # OpenAI / Anthropic / LM Studio: multimodal content array
+            # Everyone else: multimodal content array
             content_parts: List[Dict[str, Any]] = [
                 {"type": "text", "text": text_content},
             ]

@@ -195,6 +195,9 @@ Connect to any LLM provider and switch models mid-conversation. Configure provid
 | **Anthropic** (Claude 3.5 Sonnet, Haiku, etc.) | Per-token | API key from [console.anthropic.com](https://console.anthropic.com) |
 | **LM Studio** | Free, runs locally | Download from [lmstudio.ai](https://lmstudio.ai), start server |
 | **Ollama** | Free, runs locally | Download from [ollama.com](https://ollama.com), run `ollama serve` |
+| **Custom (OpenAI-compatible)** | Depends on the server | Any server that speaks the OpenAI API: llama.cpp (`llama-server`), vLLM, Groq, Together, OpenRouter. Settings → Models → Custom, enter the server URL (and a key if it needs one) |
+
+Running Llama? Use Ollama (`ollama pull llama3.1`), LM Studio, or `llama-server` through the Custom provider.
 
 ### Autonomous Memory
 
@@ -344,15 +347,20 @@ LLM provider API keys are configured through the **Settings** tab in the app. Th
 
 You can set environment variables in `docker-compose.yml` or mount a `.env` file. See `backend/.env.example` for all options.
 
-### Local LLM Providers (LM Studio, Ollama)
+### Local LLM Providers (LM Studio, Ollama, llama.cpp)
 
-If you run LM Studio or Ollama on your host machine, use `host.docker.internal` as the hostname so the Docker container can reach them:
+If you run LM Studio, Ollama or `llama-server` on your host machine, use `host.docker.internal` as the hostname so the Docker container can reach them:
 
 ```yaml
 environment:
   - LMSTUDIO_BASE_URL=http://host.docker.internal:1234/v1
   - OLLAMA_BASE_URL=http://host.docker.internal:11434
+  - CUSTOM_BASE_URL=http://host.docker.internal:8080/v1   # llama.cpp, vLLM, ...
 ```
+
+A bare address (`http://host:1234`) gets `/v1` added where the API needs it. These are only fallbacks; whatever you save in Settings → Models wins.
+
+Adding a provider in code: add a spec to `backend/llm/registry.py`, a class in `backend/llm/`, map it in `backend/llm/factory.py`, and add its row to `frontend/src/utils/providers.ts` (`backend/tests/test_llm_registry.py` fails if they disagree).
 
 ### Optional Services
 

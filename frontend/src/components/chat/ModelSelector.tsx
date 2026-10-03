@@ -11,16 +11,8 @@ import { settingsApi, conversationsApi } from '../../services/api'
 import { useChatStore } from '../../stores/chatStore'
 import { useUIStore } from '../../stores/uiStore'
 import { friendlyModelName } from '../../utils/modelNames'
-import { newChatProvider } from '../../utils/providers'
+import { newChatProvider, providerName } from '../../utils/providers'
 import type { LLMSettings } from '../../types/chat.types'
-
-/** Friendly display names for provider keys */
-const PROVIDER_NAMES: Record<string, string> = {
-  openai: 'OpenAI',
-  anthropic: 'Anthropic',
-  lmstudio: 'LM Studio',
-  ollama: 'Ollama',
-}
 
 export default function ModelSelector() {
   const { activeConversationId } = useChatStore()
@@ -154,7 +146,7 @@ export default function ModelSelector() {
           {/* Active provider label */}
           <div className="px-3 py-2 border-b border-dark-border">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-dark-text-secondary">
-              {PROVIDER_NAMES[activeProvider] || activeProvider || 'No provider'}
+              {providerName(activeProvider) || 'No provider'}
             </span>
           </div>
 

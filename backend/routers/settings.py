@@ -20,11 +20,10 @@ from config import get_settings
 from database import get_database
 from routers.auth import get_current_user
 from llm.factory import create_provider, get_available_providers
+from llm.registry import get_spec
 from llm.base import ModelInfo
 from utils.encryption import encrypt_api_key, decrypt_api_key, mask_api_key
 
-# Pre-built model lists for providers that don't need a live API call
-_STATIC_MODELS: Dict[str, List[str]] = {}
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -188,14 +187,10 @@ async def get_llm_settings(current_user: dict = Depends(get_current_user)) -> di
             except:
                 pass
         
-        # For providers with static model lists, always include them
         stored_models = config.get("availableModels", [])
-        if not stored_models and provider_name in _STATIC_MODELS:
-            stored_models = _STATIC_MODELS[provider_name]
 
-        # Auto-enable providers that don't need an API key
-        _NO_KEY_PROVIDERS = {"lmstudio", "ollama"}
-        default_enabled = provider_name in _NO_KEY_PROVIDERS
+        # Local providers (no key, default address) start enabled
+        default_enabled = get_spec(provider_name).local
 
         providers_response[provider_name] = ProviderConfigResponse(
             enabled=config.get("enabled", default_enabled),
@@ -456,13 +451,17 @@ async def test_provider_connection(
     db = get_database()
     user_id = current_user["id"]
     
-    # If no API key provided, try to use stored one
-    if not api_key:
+    # Anything not typed in the form comes from what is saved. An empty URL
+    # field means "the default address", except for providers that have none.
+    spec = get_spec(provider_name)
+    if not api_key or (not base_url and spec and spec.requires_url):
         settings = await db.llm_settings.find_one({"userId": user_id})
         if settings:
             provider_config = settings.get("providers", {}).get(provider_name, {})
+            if spec and spec.requires_url:
+                base_url = base_url or provider_config.get("baseUrl")
             encrypted_key = provider_config.get("apiKey")
-            if encrypted_key:
+            if encrypted_key and not api_key:
                 try:
                     api_key = decrypt_api_key(encrypted_key)
                 except:
@@ -473,6 +472,9 @@ async def test_provider_connection(
     
     if not provider:
         return {"success": False, "error": f"Unknown provider: {provider_name}"}
+
+    if spec.requires_url and not provider.base_url:
+        return {"success": False, "error": f"Enter the {spec.name} server URL first"}
     
     try:
         success = await provider.test_connection()
@@ -688,7 +690,7 @@ _LOG_GROUPS: Dict[str, List[str]] = {
     "memory": ["memory.memory_extractor", "memory.conflict_resolver", "memory.memory_store", "memory.memory_evolution"],
     "knowledge_graph": ["knowledge_graph.graph_store", "knowledge_graph.entity_extractor", "knowledge_graph.code_extractor"],
     "search": ["search.web_search_gate", "search.brave_search", "search.hybrid_search", "search.hybrid_wrapper"],
-    "llm": ["llm.openai_provider", "llm.anthropic_provider", "llm.lmstudio_provider", "llm.ollama_provider", "llm.base"],
+    "llm": ["llm.openai_compatible", "llm.openai_provider", "llm.anthropic_provider", "llm.lmstudio_provider", "llm.ollama_provider", "llm.custom_provider", "llm.base"],
     "routers": ["routers.messages", "routers.research", "routers.settings", "routers.auth"],
     "negative_knowledge": ["negative_knowledge.extractor", "negative_knowledge.store"],
     "notifications": ["notifications.scheduler", "notifications.email_service"],
